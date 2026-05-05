@@ -433,17 +433,50 @@
     <section class="card">
       <h2>Required CSV format</h2>
       <pre>Employee ID,Name,Manager ID,Job Role,Type of Work,Sub Type of Work,Area,Building
-E00121,Will,,Superintendent,Electrical,,Area1,Building1
-E00120,Had,E00121,Supervisor,Electrical,,Area1,Building1
-E00141,John,E00120,Chargehand,Electrical,,Area1,Building1</pre>
+E00121,Will,,Manager,Electrical,,Area1,Building1
+E00120,Jeremy,E00121,Supervisor,Electrical,,Area1,Building1
+E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     </section>
   </main>
 
   <script>
     let allRows = [];
     let currentFileStem = "org_chart";
+    const LOGO_PATH = "mehlogo.png";
+    let logoDataUrl = "";
 
     const el = id => document.getElementById(id);
+
+    function blobToDataUrl(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    async function loadLogo() {
+      try {
+        const response = await fetch(LOGO_PATH);
+
+        if (!response.ok) {
+          throw new Error("Logo not found");
+        }
+
+        const blob = await response.blob();
+        logoDataUrl = await blobToDataUrl(blob);
+      } catch (error) {
+        console.warn("Could not load mehlogo.png", error);
+        logoDataUrl = "";
+      }
+    }
+
+    const logoReady = loadLogo().then(() => {
+      if (allRows.length) {
+        drawChart();
+      }
+    });
 
     function cleanText(value) {
       const bad = new Set(["", "N/A", "NA", "NONE", "NULL", "-", "TBC", "TBD"]);
@@ -496,9 +529,11 @@ E00141,John,E00120,Chargehand,Electrical,,Area1,Building1</pre>
         .filter(r => r.some(v => cleanText(v)))
         .map(r => {
           const obj = {};
+
           headers.forEach((h, i) => {
             obj[h] = cleanText(r[i] ?? "");
           });
+
           return obj;
         });
     }
@@ -540,7 +575,9 @@ E00141,John,E00120,Chargehand,Electrical,,Area1,Building1</pre>
         const id = cleanText(row[idCol]);
         const name = cleanText(row[nameCol]);
 
-        if (!id || !name) return;
+        if (!id || !name) {
+          return;
+        }
 
         nodes.set(id, {
           id,
@@ -583,7 +620,9 @@ E00141,John,E00120,Chargehand,Electrical,,Area1,Building1</pre>
       const visited = new Set();
 
       function setLevel(node, level) {
-        if (visited.has(node.id)) return;
+        if (visited.has(node.id)) {
+          return;
+        }
 
         visited.add(node.id);
         node.level = level;
@@ -713,6 +752,12 @@ E00141,John,E00120,Chargehand,Electrical,,Area1,Building1</pre>
       const yGap = Number(el("yGap").value) || 88;
       const margin = 40;
 
+      const headerHeight = 130;
+      const logoX = 20;
+      const logoY = 18;
+      const logoW = 110;
+      const logoH = 110;
+
       const { nodes, roots } = buildHierarchy(rows);
 
       if (!nodes.length) {
@@ -720,12 +765,15 @@ E00141,John,E00120,Chargehand,Electrical,,Area1,Building1</pre>
         return;
       }
 
-      const { width, height, maxLevel } = layoutTree(roots, boxW, boxH, xGap, yGap, margin);
+      const treeLayout = layoutTree(roots, boxW, boxH, xGap, yGap, margin);
+      const chartWidth = Math.max(treeLayout.width, 1000);
+      const chartHeight = treeLayout.height + headerHeight;
+      const maxLevel = treeLayout.maxLevel;
 
       const svg = el("chartSvg");
-      svg.setAttribute("width", width);
-      svg.setAttribute("height", height);
-      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      svg.setAttribute("width", chartWidth);
+      svg.setAttribute("height", chartHeight);
+      svg.setAttribute("viewBox", `0 0 ${chartWidth} ${chartHeight}`);
       svg.innerHTML = "";
 
       const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
@@ -751,17 +799,52 @@ E00141,John,E00120,Chargehand,Electrical,,Area1,Building1</pre>
             stroke-width: 1.2;
             fill: none;
           }
+
+          .chart-title {
+            font: bold 28px Arial;
+            fill: #172033;
+          }
         </style>
       `;
 
       svg.appendChild(defs);
 
+      const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      bg.setAttribute("x", 0);
+      bg.setAttribute("y", 0);
+      bg.setAttribute("width", chartWidth);
+      bg.setAttribute("height", chartHeight);
+      bg.setAttribute("fill", "#ffffff");
+      svg.appendChild(bg);
+
+      if (logoDataUrl) {
+        const image = document.createElementNS("http://www.w3.org/2000/svg", "image");
+        image.setAttribute("href", logoDataUrl);
+        image.setAttribute("x", logoX);
+        image.setAttribute("y", logoY);
+        image.setAttribute("width", logoW);
+        image.setAttribute("height", logoH);
+        image.setAttribute("preserveAspectRatio", "xMidYMid meet");
+        svg.appendChild(image);
+      }
+
+      const title = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      title.setAttribute("class", "chart-title");
+      title.setAttribute("x", chartWidth / 2);
+      title.setAttribute("y", 52);
+      title.setAttribute("text-anchor", "middle");
+      title.textContent = selectedBuilding;
+      svg.appendChild(title);
+
       nodes.forEach(node => {
         node.children.forEach(child => {
           const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
 
-          const y1 = node.y + boxH / 2;
-          const y2 = child.y - boxH / 2;
+          const parentY = node.y + headerHeight;
+          const childY = child.y + headerHeight;
+
+          const y1 = parentY + boxH / 2;
+          const y2 = childY - boxH / 2;
           const mid = (y1 + y2) / 2;
 
           path.setAttribute("class", "line");
@@ -774,8 +857,9 @@ E00141,John,E00120,Chargehand,Electrical,,Area1,Building1</pre>
       nodes.forEach(node => {
         const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
 
+        const renderY = node.y + headerHeight;
         const x = node.x - boxW / 2;
-        const y = node.y - boxH / 2;
+        const y = renderY - boxH / 2;
 
         const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
         rect.setAttribute("class", "box");
@@ -870,7 +954,9 @@ E00141,John,E00120,Chargehand,Electrical,,Area1,Building1</pre>
     el("csvFile").addEventListener("change", async event => {
       const file = event.target.files[0];
 
-      if (!file) return;
+      if (!file) {
+        return;
+      }
 
       currentFileStem = safeName(file.name.replace(/\.csv$/i, ""));
 
@@ -879,6 +965,7 @@ E00141,John,E00120,Chargehand,Electrical,,Area1,Building1</pre>
       try {
         allRows = parseCSV(text);
         updateBuildingSelect();
+        await logoReady;
         drawChart();
       } catch (error) {
         el("errorBox").textContent = error.message || String(error);
