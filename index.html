@@ -1,0 +1,796 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>CSV Org Chart Builder</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --card: #fff;
+      --text: #172033;
+      --muted: #637083;
+      --border: #dbe3ee;
+      --primary: #1d4ed8;
+      --primary-dark: #173ea9;
+      --warn-bg: #fff7ed;
+      --warn-border: #fed7aa;
+      --danger: #b42318;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .shell {
+      width: min(1180px, calc(100% - 32px));
+      margin: 32px auto;
+    }
+
+    .hero {
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      align-items: flex-start;
+      margin-bottom: 22px;
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(32px, 5vw, 54px);
+      line-height: 1;
+    }
+
+    h2 {
+      margin: 0 0 12px;
+    }
+
+    .lead {
+      max-width: 760px;
+      margin: 14px 0 0;
+      color: #465469;
+      font-size: 18px;
+      line-height: 1.5;
+    }
+
+    .badge {
+      white-space: nowrap;
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: 999px;
+      padding: 10px 14px;
+      color: #2d465d;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 22px;
+      box-shadow: 0 14px 30px rgba(25, 39, 52, .08);
+      margin-bottom: 20px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+
+    label {
+      display: block;
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    input,
+    select {
+      width: 100%;
+      margin-top: 7px;
+      border: 1px solid #cbd6df;
+      border-radius: 12px;
+      padding: 11px 12px;
+      font-size: 15px;
+      background: #fff;
+    }
+
+    input[type="file"] {
+      padding: 14px;
+      background: #fafcff;
+      border-style: dashed;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    button {
+      appearance: none;
+      border: 0;
+      background: var(--primary);
+      color: #fff;
+      border-radius: 14px;
+      padding: 12px 16px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      background: #edf2f7;
+      color: #1f2a3d;
+    }
+
+    button:hover {
+      background: var(--primary-dark);
+    }
+
+    button.secondary:hover {
+      background: #dce7f2;
+    }
+
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .hint {
+      display: block;
+      margin-top: 6px;
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 400;
+    }
+
+    .warning {
+      border-radius: 16px;
+      padding: 15px;
+      background: var(--warn-bg);
+      border: 1px solid var(--warn-border);
+      color: #7c2d12;
+      line-height: 1.5;
+    }
+
+    .error {
+      color: var(--danger);
+      font-weight: 700;
+      white-space: pre-wrap;
+    }
+
+    #chartWrap {
+      overflow: auto;
+      max-height: 72vh;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: #fff;
+      padding: 10px;
+    }
+
+    .stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      color: var(--muted);
+      margin: 10px 0 16px;
+    }
+
+    .pill {
+      background: #eef4fb;
+      border: 1px solid #d7e3ef;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 13px;
+    }
+
+    pre {
+      overflow-x: auto;
+      background: #0f172a;
+      color: #dbeafe;
+      border-radius: 14px;
+      padding: 16px;
+    }
+
+    code {
+      background: #edf2f7;
+      padding: 2px 6px;
+      border-radius: 6px;
+    }
+
+    @media (max-width: 900px) {
+      .hero {
+        display: block;
+      }
+
+      .badge {
+        display: inline-block;
+        margin-top: 14px;
+      }
+
+      .grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 560px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Browser-only tool</p>
+        <h1>CSV Org Chart Builder</h1>
+        <p class="lead">
+          Upload your Visio-ready CSV and generate building-based org charts directly in the browser.
+          Export as SVG or PNG.
+        </p>
+      </div>
+      <div class="badge">No Visio required</div>
+    </section>
+
+    <section class="card warning">
+      <strong>Important:</strong>
+      A browser-only tool cannot create native <code>.vsdx</code> files.
+      This creates clean <code>.svg</code> and <code>.png</code> org charts.
+    </section>
+
+    <section class="card">
+      <h2>1. Upload CSV</h2>
+
+      <input id="csvFile" type="file" accept=".csv">
+
+      <div class="grid" style="margin-top: 18px;">
+        <label>
+          Employee ID column
+          <input id="idCol" value="Employee ID">
+        </label>
+
+        <label>
+          Name column
+          <input id="nameCol" value="Name">
+        </label>
+
+        <label>
+          Manager ID column
+          <input id="managerCol" value="Manager ID">
+        </label>
+
+        <label>
+          Building column
+          <input id="buildingCol" value="Building">
+        </label>
+      </div>
+
+      <div class="grid" style="margin-top: 14px;">
+        <label>
+          Title / role column
+          <input id="titleCol" value="Job Role">
+        </label>
+
+        <label>
+          Type column
+          <input id="typeCol" value="Type of Work">
+        </label>
+
+        <label>
+          Area column
+          <input id="areaCol" value="Area">
+        </label>
+
+        <label>
+          Chart to view
+          <select id="buildingSelect" disabled>
+            <option>Upload a CSV first</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="grid" style="margin-top: 14px;">
+        <label>
+          Box width
+          <input id="boxWidth" type="number" value="220">
+        </label>
+
+        <label>
+          Box height
+          <input id="boxHeight" type="number" value="82">
+        </label>
+
+        <label>
+          Horizontal gap
+          <input id="xGap" type="number" value="42">
+        </label>
+
+        <label>
+          Vertical gap
+          <input id="yGap" type="number" value="88">
+        </label>
+      </div>
+
+      <div class="actions">
+        <button id="buildBtn" type="button">Build chart</button>
+        <button id="downloadSvgBtn" class="secondary" type="button" disabled>Download SVG</button>
+        <button id="downloadPngBtn" class="secondary" type="button" disabled>Download PNG</button>
+      </div>
+
+      <p class="hint">
+        Expected hierarchy:
+        <code>Employee ID</code> links to each row's <code>Manager ID</code>.
+        Top person has a blank Manager ID.
+      </p>
+
+      <p id="errorBox" class="error"></p>
+    </section>
+
+    <section class="card">
+      <h2>2. Chart</h2>
+      <div class="stats" id="stats"></div>
+      <div id="chartWrap">
+        <svg id="chartSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Required CSV format</h2>
+      <pre>Employee ID,Name,Manager ID,Job Role,Type of Work,Sub Type of Work,Area,Building
+E00121,Will,,Superintendent,Electrical,,Area1,Building1
+E00120,Had,E00121,Supervisor,Electrical,,Area1,Building1
+E00141,John,E00120,Chargehand,Electrical,,Area1,Building1</pre>
+    </section>
+  </main>
+
+  <script>
+    let allRows = [];
+    let currentFileStem = "org_chart";
+
+    const el = id => document.getElementById(id);
+
+    function cleanText(value) {
+      const bad = new Set(["", "N/A", "NA", "NONE", "NULL", "-", "TBC", "TBD"]);
+      const text = String(value ?? "").trim().replace(/\s+/g, " ");
+      return bad.has(text.toUpperCase()) ? "" : text;
+    }
+
+    function parseCSV(text) {
+      const rows = [];
+      let row = [];
+      let field = "";
+      let inQuotes = false;
+
+      for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        const n = text[i + 1];
+
+        if (inQuotes) {
+          if (c === '"' && n === '"') {
+            field += '"';
+            i++;
+          } else if (c === '"') {
+            inQuotes = false;
+          } else {
+            field += c;
+          }
+        } else {
+          if (c === '"') {
+            inQuotes = true;
+          } else if (c === ",") {
+            row.push(field);
+            field = "";
+          } else if (c === "\n") {
+            row.push(field);
+            rows.push(row);
+            row = [];
+            field = "";
+          } else if (c !== "\r") {
+            field += c;
+          }
+        }
+      }
+
+      row.push(field);
+      rows.push(row);
+
+      const headers = rows.shift().map(h => cleanText(h));
+
+      return rows
+        .filter(r => r.some(v => cleanText(v)))
+        .map(r => {
+          const obj = {};
+          headers.forEach((h, i) => {
+            obj[h] = cleanText(r[i] ?? "");
+          });
+          return obj;
+        });
+    }
+
+    function safeName(s) {
+      return cleanText(s)
+        .replace(/[<>:"/\\|?*]+/g, "-")
+        .replace(/\s+/g, "_") || "org_chart";
+    }
+
+    function updateBuildingSelect() {
+      const buildingCol = el("buildingCol").value;
+
+      const buildings = Array.from(
+        new Set(allRows.map(r => cleanText(r[buildingCol]) || "No Building"))
+      ).sort();
+
+      const select = el("buildingSelect");
+      select.innerHTML = "";
+
+      buildings.forEach(building => {
+        const option = document.createElement("option");
+        option.value = building;
+        option.textContent = building;
+        select.appendChild(option);
+      });
+
+      select.disabled = buildings.length === 0;
+    }
+
+    function buildHierarchy(rows) {
+      const idCol = el("idCol").value;
+      const nameCol = el("nameCol").value;
+      const managerCol = el("managerCol").value;
+
+      const nodes = new Map();
+
+      rows.forEach(row => {
+        const id = cleanText(row[idCol]);
+        const name = cleanText(row[nameCol]);
+
+        if (!id || !name) return;
+
+        nodes.set(id, {
+          id,
+          name,
+          managerId: cleanText(row[managerCol]),
+          row,
+          children: [],
+          level: 0,
+          x: 0,
+          y: 0
+        });
+      });
+
+      const roots = [];
+
+      nodes.forEach(node => {
+        if (!node.managerId || node.managerId === node.id || !nodes.has(node.managerId)) {
+          node.managerId = "";
+          roots.push(node);
+        } else {
+          nodes.get(node.managerId).children.push(node);
+        }
+      });
+
+      nodes.forEach(node => {
+        node.children.sort((a, b) => a.name.localeCompare(b.name));
+      });
+
+      roots.sort((a, b) => a.name.localeCompare(b.name));
+
+      return {
+        nodes: Array.from(nodes.values()),
+        roots
+      };
+    }
+
+    function layoutTree(roots, boxW, boxH, xGap, yGap, margin) {
+      let maxLevel = 0;
+      let leaf = 0;
+      const visited = new Set();
+
+      function setLevel(node, level) {
+        if (visited.has(node.id)) return;
+
+        visited.add(node.id);
+        node.level = level;
+        maxLevel = Math.max(maxLevel, level);
+
+        node.children.forEach(child => setLevel(child, level + 1));
+      }
+
+      roots.forEach(root => setLevel(root, 0));
+
+      function layout(node) {
+        if (!node.children.length) {
+          node.x = margin + leaf * (boxW + xGap) + boxW / 2;
+          leaf++;
+          return node.x;
+        }
+
+        const childXs = node.children.map(layout);
+        node.x = childXs.reduce((a, b) => a + b, 0) / childXs.length;
+
+        return node.x;
+      }
+
+      roots.forEach(root => {
+        layout(root);
+        leaf++;
+      });
+
+      const width = Math.max(1000, margin * 2 + Math.max(1, leaf) * (boxW + xGap));
+      const height = Math.max(650, margin * 2 + (maxLevel + 1) * (boxH + yGap));
+
+      function setY(node) {
+        node.y = margin + node.level * (boxH + yGap) + boxH / 2;
+        node.children.forEach(setY);
+      }
+
+      roots.forEach(setY);
+
+      return {
+        width,
+        height,
+        maxLevel
+      };
+    }
+
+    function drawChart() {
+      const errorBox = el("errorBox");
+      errorBox.textContent = "";
+
+      if (!allRows.length) {
+        errorBox.textContent = "Upload a CSV first.";
+        return;
+      }
+
+      const buildingCol = el("buildingCol").value;
+      const selectedBuilding = el("buildingSelect").value;
+
+      const rows = allRows.filter(row => {
+        return (cleanText(row[buildingCol]) || "No Building") === selectedBuilding;
+      });
+
+      const boxW = Number(el("boxWidth").value) || 220;
+      const boxH = Number(el("boxHeight").value) || 82;
+      const xGap = Number(el("xGap").value) || 42;
+      const yGap = Number(el("yGap").value) || 88;
+      const margin = 40;
+
+      const { nodes, roots } = buildHierarchy(rows);
+
+      if (!nodes.length) {
+        errorBox.textContent = "No valid rows found for this building.";
+        return;
+      }
+
+      const { width, height, maxLevel } = layoutTree(roots, boxW, boxH, xGap, yGap, margin);
+
+      const svg = el("chartSvg");
+      svg.setAttribute("width", width);
+      svg.setAttribute("height", height);
+      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      svg.innerHTML = "";
+
+      const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+      defs.innerHTML = `
+        <style>
+          .box {
+            fill: #ffffff;
+            stroke: #1d4ed8;
+            stroke-width: 1.4;
+          }
+
+          .name {
+            font: bold 14px Arial;
+          }
+
+          .meta {
+            font: 12px Arial;
+            fill: #334155;
+          }
+
+          .line {
+            stroke: #64748b;
+            stroke-width: 1.2;
+            fill: none;
+          }
+        </style>
+      `;
+
+      svg.appendChild(defs);
+
+      nodes.forEach(node => {
+        node.children.forEach(child => {
+          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+
+          const y1 = node.y + boxH / 2;
+          const y2 = child.y - boxH / 2;
+          const mid = (y1 + y2) / 2;
+
+          path.setAttribute("class", "line");
+          path.setAttribute("d", `M ${node.x} ${y1} V ${mid} H ${child.x} V ${y2}`);
+
+          svg.appendChild(path);
+        });
+      });
+
+      const titleCol = el("titleCol").value;
+      const typeCol = el("typeCol").value;
+      const areaCol = el("areaCol").value;
+      const idCol = el("idCol").value;
+
+      nodes.forEach(node => {
+        const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+
+        const x = node.x - boxW / 2;
+        const y = node.y - boxH / 2;
+
+        const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        rect.setAttribute("class", "box");
+        rect.setAttribute("x", x);
+        rect.setAttribute("y", y);
+        rect.setAttribute("width", boxW);
+        rect.setAttribute("height", boxH);
+        rect.setAttribute("rx", 10);
+        group.appendChild(rect);
+
+        const textLines = [
+          {
+            text: node.name,
+            cls: "name"
+          },
+          {
+            text: cleanText(node.row[titleCol]),
+            cls: "meta"
+          },
+          {
+            text: cleanText(node.row[typeCol]),
+            cls: "meta"
+          },
+          {
+            text: cleanText(node.row[areaCol]),
+            cls: "meta"
+          },
+          {
+            text: cleanText(node.row[idCol]),
+            cls: "meta"
+          }
+        ].filter(line => line.text);
+
+        textLines.slice(0, 5).forEach((line, i) => {
+          const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+
+          text.setAttribute("class", line.cls);
+          text.setAttribute("x", node.x);
+          text.setAttribute("y", y + 20 + i * 14);
+          text.setAttribute("text-anchor", "middle");
+
+          text.textContent = line.text.length > 28
+            ? line.text.slice(0, 25) + "..."
+            : line.text;
+
+          group.appendChild(text);
+        });
+
+        svg.appendChild(group);
+      });
+
+      el("stats").innerHTML = `
+        <span class="pill">${nodes.length} people</span>
+        <span class="pill">${roots.length} top-level node(s)</span>
+        <span class="pill">${maxLevel + 1} level(s)</span>
+        <span class="pill">${selectedBuilding}</span>
+      `;
+
+      el("downloadSvgBtn").disabled = false;
+      el("downloadPngBtn").disabled = false;
+    }
+
+    function downloadSVG() {
+      const svg = el("chartSvg");
+      const data = new XMLSerializer().serializeToString(svg);
+
+      const blob = new Blob([data], {
+        type: "image/svg+xml;charset=utf-8"
+      });
+
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `${currentFileStem}_${safeName(el("buildingSelect").value)}.svg`;
+      link.click();
+
+      URL.revokeObjectURL(link.href);
+    }
+
+    function downloadPNG() {
+      const svg = el("chartSvg");
+      const data = new XMLSerializer().serializeToString(svg);
+
+      const image = new Image();
+      const svgBlob = new Blob([data], {
+        type: "image/svg+xml;charset=utf-8"
+      });
+
+      const url = URL.createObjectURL(svgBlob);
+
+      image.onload = () => {
+        const canvas = document.createElement("canvas");
+
+        canvas.width = svg.width.baseVal.value;
+        canvas.height = svg.height.baseVal.value;
+
+        const context = canvas.getContext("2d");
+
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(image, 0, 0);
+
+        URL.revokeObjectURL(url);
+
+        const link = document.createElement("a");
+        link.href = canvas.toDataURL("image/png");
+        link.download = `${currentFileStem}_${safeName(el("buildingSelect").value)}.png`;
+        link.click();
+      };
+
+      image.src = url;
+    }
+
+    el("csvFile").addEventListener("change", async event => {
+      const file = event.target.files[0];
+
+      if (!file) return;
+
+      currentFileStem = safeName(file.name.replace(/\.csv$/i, ""));
+
+      const text = await file.text();
+
+      try {
+        allRows = parseCSV(text);
+        updateBuildingSelect();
+        drawChart();
+      } catch (error) {
+        el("errorBox").textContent = error.message || String(error);
+      }
+    });
+
+    ["idCol", "nameCol", "managerCol", "buildingCol"].forEach(id => {
+      el(id).addEventListener("change", () => {
+        if (allRows.length) {
+          updateBuildingSelect();
+          drawChart();
+        }
+      });
+    });
+
+    ["titleCol", "typeCol", "areaCol", "boxWidth", "boxHeight", "xGap", "yGap", "buildingSelect"].forEach(id => {
+      el(id).addEventListener("change", drawChart);
+    });
+
+    el("buildBtn").addEventListener("click", drawChart);
+    el("downloadSvgBtn").addEventListener("click", downloadSVG);
+    el("downloadPngBtn").addEventListener("click", downloadPNG);
+  </script>
+</body>
+</html>
