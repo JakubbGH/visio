@@ -1,0 +1,8 @@
+Employee ID,Name,Manager ID,Job Role,Type of Work,Sub Type of Work,Area,Building
+E00121,Will,,Superintendent,Electrical,,Area1,Building1
+E00120,Had,E00121,Supervisor,Electrical,,Area1,Building1
+E00141,John,E00120,Chargehand,Electrical,,Area1,Building1
+E00209,Sam,E00120,Electrician,Electrical,,Area1,Building1
+E00300,Alice,,Superintendent,Mechanical,,Area2,Building2
+E00301,Bob,E00300,Supervisor,Mechanical,,Area2,Building2
+E00302,Charlie,E00301,Installer,Mechanical,,Area2,Building2
