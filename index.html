@@ -752,11 +752,11 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       const yGap = Number(el("yGap").value) || 88;
       const margin = 40;
 
-      const headerHeight = 130;
-      const logoX = 20;
-      const logoY = 18;
-      const logoW = 110;
-      const logoH = 110;
+      const headerHeight = 190;
+      const logoX = 24;
+      const logoY = 20;
+      const logoW = 170;
+      const logoH = 170;
 
       const { nodes, roots } = buildHierarchy(rows);
 
@@ -766,6 +766,12 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       }
 
       const treeLayout = layoutTree(roots, boxW, boxH, xGap, yGap, margin);
+
+      const nodeXs = nodes.map(node => node.x);
+      const minNodeX = Math.min(...nodeXs);
+      const maxNodeX = Math.max(...nodeXs);
+      const treeCenterX = (minNodeX + maxNodeX) / 2;
+
       const chartWidth = Math.max(treeLayout.width, 1000);
       const chartHeight = treeLayout.height + headerHeight;
       const maxLevel = treeLayout.maxLevel;
@@ -801,8 +807,13 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
           }
 
           .chart-title {
-            font: bold 28px Arial;
+            font: bold 30px Arial;
             fill: #172033;
+          }
+
+          .chart-subtitle {
+            font: 14px Arial;
+            fill: #637083;
           }
         </style>
       `;
@@ -830,11 +841,19 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       const title = document.createElementNS("http://www.w3.org/2000/svg", "text");
       title.setAttribute("class", "chart-title");
-      title.setAttribute("x", chartWidth / 2);
-      title.setAttribute("y", 52);
+      title.setAttribute("x", treeCenterX);
+      title.setAttribute("y", 78);
       title.setAttribute("text-anchor", "middle");
       title.textContent = selectedBuilding;
       svg.appendChild(title);
+
+      const subtitle = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      subtitle.setAttribute("class", "chart-subtitle");
+      subtitle.setAttribute("x", treeCenterX);
+      subtitle.setAttribute("y", 104);
+      subtitle.setAttribute("text-anchor", "middle");
+      subtitle.textContent = `${nodes.length} people`;
+      svg.appendChild(subtitle);
 
       nodes.forEach(node => {
         node.children.forEach(child => {
