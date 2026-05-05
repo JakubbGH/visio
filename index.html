@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <title>CSV Org Chart Builder</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+
   <style>
     :root {
       --bg: #f5f7fb;
@@ -178,6 +179,38 @@
       white-space: pre-wrap;
     }
 
+    .toggle-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .toggle-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--border);
+      background: #f8fafc;
+      border-radius: 999px;
+      padding: 9px 12px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .toggle-pill input {
+      width: auto;
+      margin: 0;
+    }
+
+    .toggle-pill:has(input:checked) {
+      background: #dbeafe;
+      border-color: #93c5fd;
+      color: #1d4ed8;
+    }
+
     #chartWrap {
       overflow: auto;
       max-height: 72vh;
@@ -311,7 +344,48 @@
         </label>
       </div>
 
-      <div class="grid" style="margin-top: 14px;">
+      <div style="margin-top: 18px;">
+        <label>Show information on chart</label>
+
+        <div class="toggle-grid">
+          <label class="toggle-pill">
+            <input id="showName" type="checkbox" checked>
+            Name
+          </label>
+
+          <label class="toggle-pill">
+            <input id="showEmployeeId" type="checkbox">
+            Employee ID
+          </label>
+
+          <label class="toggle-pill">
+            <input id="showJobRole" type="checkbox" checked>
+            Job Role
+          </label>
+
+          <label class="toggle-pill">
+            <input id="showTypeOfWork" type="checkbox" checked>
+            Type of Work
+          </label>
+
+          <label class="toggle-pill">
+            <input id="showArea" type="checkbox" checked>
+            Area
+          </label>
+
+          <label class="toggle-pill">
+            <input id="showBuilding" type="checkbox">
+            Building
+          </label>
+
+          <label class="toggle-pill">
+            <input id="showManagerId" type="checkbox">
+            Manager ID
+          </label>
+        </div>
+      </div>
+
+      <div class="grid" style="margin-top: 18px;">
         <label>
           Box width
           <input id="boxWidth" type="number" value="220">
@@ -555,6 +629,68 @@ E00141,John,E00120,Chargehand,Electrical,,Area1,Building1</pre>
       };
     }
 
+    function getVisibleChartFields(node) {
+      const idCol = el("idCol").value;
+      const managerCol = el("managerCol").value;
+      const titleCol = el("titleCol").value;
+      const typeCol = el("typeCol").value;
+      const areaCol = el("areaCol").value;
+      const buildingCol = el("buildingCol").value;
+
+      const fields = [];
+
+      if (el("showName").checked) {
+        fields.push({
+          text: node.name,
+          cls: "name"
+        });
+      }
+
+      if (el("showEmployeeId").checked) {
+        fields.push({
+          text: cleanText(node.row[idCol]),
+          cls: "meta"
+        });
+      }
+
+      if (el("showJobRole").checked) {
+        fields.push({
+          text: cleanText(node.row[titleCol]),
+          cls: "meta"
+        });
+      }
+
+      if (el("showTypeOfWork").checked) {
+        fields.push({
+          text: cleanText(node.row[typeCol]),
+          cls: "meta"
+        });
+      }
+
+      if (el("showArea").checked) {
+        fields.push({
+          text: cleanText(node.row[areaCol]),
+          cls: "meta"
+        });
+      }
+
+      if (el("showBuilding").checked) {
+        fields.push({
+          text: cleanText(node.row[buildingCol]),
+          cls: "meta"
+        });
+      }
+
+      if (el("showManagerId").checked) {
+        fields.push({
+          text: cleanText(node.row[managerCol]),
+          cls: "meta"
+        });
+      }
+
+      return fields.filter(field => field.text);
+    }
+
     function drawChart() {
       const errorBox = el("errorBox");
       errorBox.textContent = "";
@@ -635,11 +771,6 @@ E00141,John,E00120,Chargehand,Electrical,,Area1,Building1</pre>
         });
       });
 
-      const titleCol = el("titleCol").value;
-      const typeCol = el("typeCol").value;
-      const areaCol = el("areaCol").value;
-      const idCol = el("idCol").value;
-
       nodes.forEach(node => {
         const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
 
@@ -655,30 +786,9 @@ E00141,John,E00120,Chargehand,Electrical,,Area1,Building1</pre>
         rect.setAttribute("rx", 10);
         group.appendChild(rect);
 
-        const textLines = [
-          {
-            text: node.name,
-            cls: "name"
-          },
-          {
-            text: cleanText(node.row[titleCol]),
-            cls: "meta"
-          },
-          {
-            text: cleanText(node.row[typeCol]),
-            cls: "meta"
-          },
-          {
-            text: cleanText(node.row[areaCol]),
-            cls: "meta"
-          },
-          {
-            text: cleanText(node.row[idCol]),
-            cls: "meta"
-          }
-        ].filter(line => line.text);
+        const textLines = getVisibleChartFields(node);
 
-        textLines.slice(0, 5).forEach((line, i) => {
+        textLines.slice(0, 6).forEach((line, i) => {
           const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
 
           text.setAttribute("class", line.cls);
@@ -784,7 +894,23 @@ E00141,John,E00120,Chargehand,Electrical,,Area1,Building1</pre>
       });
     });
 
-    ["titleCol", "typeCol", "areaCol", "boxWidth", "boxHeight", "xGap", "yGap", "buildingSelect"].forEach(id => {
+    [
+      "titleCol",
+      "typeCol",
+      "areaCol",
+      "boxWidth",
+      "boxHeight",
+      "xGap",
+      "yGap",
+      "buildingSelect",
+      "showName",
+      "showEmployeeId",
+      "showJobRole",
+      "showTypeOfWork",
+      "showArea",
+      "showBuilding",
+      "showManagerId"
+    ].forEach(id => {
       el(id).addEventListener("change", drawChart);
     });
 
