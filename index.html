@@ -12,11 +12,12 @@
       --text: #172033;
       --muted: #637083;
       --border: #dbe3ee;
-      --primary: #1d4ed8;
-      --primary-dark: #173ea9;
+      --primary: #00843D;
+      --primary-dark: #006b31;
       --warn-bg: #fff7ed;
       --warn-border: #fed7aa;
       --danger: #b42318;
+      --celtic-green: #00843D;
     }
 
     * {
@@ -206,9 +207,9 @@
     }
 
     .toggle-pill:has(input:checked) {
-      background: #dbeafe;
-      border-color: #93c5fd;
-      color: #1d4ed8;
+      background: #e8f5ee;
+      border-color: #00843D;
+      color: #00843D;
     }
 
     #chartWrap {
@@ -730,6 +731,25 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       return fields.filter(field => field.text);
     }
 
+    function getTitleCenterX(roots) {
+      const rootXs = roots.map(root => root.x);
+
+      if (!rootXs.length) {
+        return 500;
+      }
+
+      rootXs.sort((a, b) => a - b);
+
+      const rootCount = rootXs.length;
+      const middleIndex = Math.floor(rootCount / 2);
+
+      if (rootCount % 2 === 1) {
+        return rootXs[middleIndex];
+      }
+
+      return (rootXs[middleIndex - 1] + rootXs[middleIndex]) / 2;
+    }
+
     function drawChart() {
       const errorBox = el("errorBox");
       errorBox.textContent = "";
@@ -766,11 +786,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       }
 
       const treeLayout = layoutTree(roots, boxW, boxH, xGap, yGap, margin);
-
-      const nodeXs = nodes.map(node => node.x);
-      const minNodeX = Math.min(...nodeXs);
-      const maxNodeX = Math.max(...nodeXs);
-      const treeCenterX = (minNodeX + maxNodeX) / 2;
+      const titleCenterX = getTitleCenterX(roots);
 
       const chartWidth = Math.max(treeLayout.width, 1000);
       const chartHeight = treeLayout.height + headerHeight;
@@ -787,8 +803,8 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         <style>
           .box {
             fill: #ffffff;
-            stroke: #1d4ed8;
-            stroke-width: 1.4;
+            stroke: #00843D;
+            stroke-width: 1.6;
           }
 
           .name {
@@ -841,7 +857,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       const title = document.createElementNS("http://www.w3.org/2000/svg", "text");
       title.setAttribute("class", "chart-title");
-      title.setAttribute("x", treeCenterX);
+      title.setAttribute("x", titleCenterX);
       title.setAttribute("y", 78);
       title.setAttribute("text-anchor", "middle");
       title.textContent = selectedBuilding;
@@ -849,7 +865,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       const subtitle = document.createElementNS("http://www.w3.org/2000/svg", "text");
       subtitle.setAttribute("class", "chart-subtitle");
-      subtitle.setAttribute("x", treeCenterX);
+      subtitle.setAttribute("x", titleCenterX);
       subtitle.setAttribute("y", 104);
       subtitle.setAttribute("text-anchor", "middle");
       subtitle.textContent = `${nodes.length} people`;
@@ -930,7 +946,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
-      link.download = `${currentFileStem}_${safeName(el("buildingSelect").value)}.svg`;
+      link.download = `OrgChart_${safeName(el("buildingSelect").value)}.svg`;
       link.click();
 
       URL.revokeObjectURL(link.href);
@@ -963,7 +979,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
         const link = document.createElement("a");
         link.href = canvas.toDataURL("image/png");
-        link.download = `${currentFileStem}_${safeName(el("buildingSelect").value)}.png`;
+        link.download = `OrgChart_${safeName(el("buildingSelect").value)}.png`;
         link.click();
       };
 
