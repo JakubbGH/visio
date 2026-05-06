@@ -213,10 +213,10 @@
 
     #chartWrap {
       overflow: auto;
-      max-height: 72vh;
+      max-height: 80vh;
       border: 1px solid var(--border);
       border-radius: 18px;
-      background: #fff;
+      background: #edf2f7;
       padding: 10px;
     }
 
@@ -284,13 +284,13 @@
           Export as SVG or PNG.
         </p>
       </div>
-      <div class="badge">No Visio required</div>
+      <div class="badge">A3 Landscape default</div>
     </section>
 
     <section class="card warning">
       <strong>Important:</strong>
       A browser-only tool cannot create native <code>.vsdx</code> files.
-      This creates clean <code>.svg</code> and <code>.png</code> org charts.
+      This creates clean <code>.svg</code> and <code>.png</code> org charts laid out to fit an A3 sheet.
     </section>
 
     <section class="card">
@@ -388,46 +388,48 @@
       <div class="grid" style="margin-top: 18px;">
         <label>
           Box width
-          <input id="boxWidth" type="number" value="200">
+          <input id="boxWidth" type="number" value="210">
         </label>
 
         <label>
           Box height
-          <input id="boxHeight" type="number" value="82">
+          <input id="boxHeight" type="number" value="88">
         </label>
 
         <label>
-          Horizontal gap
-          <input id="xGap" type="number" value="28">
+          Sibling gap
+          <input id="xGap" type="number" value="26">
         </label>
 
         <label>
-          Vertical gap
-          <input id="yGap" type="number" value="88">
+          Generation gap
+          <input id="yGap" type="number" value="80">
         </label>
       </div>
 
       <div class="grid" style="margin-top: 14px;">
         <label>
-          Max width / height ratio
-          <input id="aspectLimit" type="number" step="0.01" value="1.08">
-          <span class="hint">1.00 = square, 1.08 = slightly wider than tall.</span>
+          Child row gap
+          <input id="rowGap" type="number" value="34">
         </label>
 
         <label>
-          Minimum box width
-          <input id="minBoxWidth" type="number" value="150">
+          Page format
+          <select id="pageMode">
+            <option value="landscape" selected>A3 Landscape</option>
+            <option value="portrait">A3 Portrait</option>
+          </select>
         </label>
 
         <label>
-          Minimum horizontal gap
-          <input id="minXGap" type="number" value="12">
+          Page margin
+          <input id="pageMargin" type="number" value="34">
         </label>
 
         <label>
-          Compact strength
-          <input id="compactStrength" type="number" step="0.05" value="0.88">
-          <span class="hint">Lower = stronger compression.</span>
+          Maximum rows of direct reports
+          <input id="maxRowsPerManager" type="number" value="3">
+          <span class="hint">Wraps direct reports into rows so charts stay contained.</span>
         </label>
       </div>
 
@@ -468,6 +470,11 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     let currentFileStem = "org_chart";
     const LOGO_PATH = "mehlogo.png";
     let logoDataUrl = "";
+
+    const PAGE_PRESETS = {
+      landscape: { width: 1587, height: 1123, label: "A3 Landscape" },
+      portrait: { width: 1123, height: 1587, label: "A3 Portrait" }
+    };
 
     const el = id => document.getElementById(id);
 
@@ -609,10 +616,16 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
           managerId: cleanText(row[managerCol]),
           row,
           children: [],
-          level: 0,
-          span: 1,
-          x: 0,
-          y: 0
+          relX: 0,
+          relY: 0,
+          subtreeWidth: 0,
+          subtreeHeight: 0,
+          boxX: 0,
+          boxY: 0,
+          centerX: 0,
+          centerY: 0,
+          rows: [],
+          isVirtual: false
         });
       });
 
@@ -639,185 +652,181 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       };
     }
 
-    function layoutTree(roots, boxW, boxH, xGap, yGap, margin) {
-      let maxLevel = 0;
-      const visited = new Set();
+    function getPageConfig() {
+      const mode = el("pageMode").value || "landscape";
+      const preset = PAGE_PRESETS[mode] || PAGE_PRESETS.landscape;
+      const margin = Number(el("pageMargin").value) || 34;
+      const headerHeight = 145;
 
-      function assignLevels(node, level) {
-        if (visited.has(node.id)) {
-          return;
-        }
+      return {
+        mode,
+        label: preset.label,
+        pageWidth: preset.width,
+        pageHeight: preset.height,
+        margin,
+        headerHeight,
+        innerWidth: preset.width - margin * 2,
+        innerHeight: preset.height - margin * 2 - headerHeight
+      };
+    }
 
-        visited.add(node.id);
-        node.level = level;
-        maxLevel = Math.max(maxLevel, level);
-
-        node.children.forEach(child => assignLevels(child, level + 1));
+    function packChildrenIntoRows(children, maxRowWidth, gap, maxRowsPerManager) {
+      if (!children.length) {
+        return [];
       }
 
-      roots.forEach(root => assignLevels(root, 0));
+      const maxRows = Math.max(1, Number(maxRowsPerManager) || 3);
+      let bestRows = null;
+      let bestScore = Infinity;
 
-      function measureSpan(node) {
-        if (!node.children.length) {
-          node.span = 1;
-          return 1;
-        }
+      for (let rowCount = 1; rowCount <= Math.min(maxRows, children.length); rowCount++) {
+        const rows = Array.from({ length: rowCount }, () => ({
+          items: [],
+          width: 0,
+          height: 0
+        }));
 
-        node.span = node.children.reduce((sum, child) => {
-          return sum + measureSpan(child);
-        }, 0);
+        const sortedChildren = [...children].sort((a, b) => b.subtreeWidth - a.subtreeWidth);
 
-        return Math.max(1, node.span);
-      }
-
-      roots.forEach(root => measureSpan(root));
-
-      const unitW = boxW + xGap;
-      let cursor = 0;
-
-      function place(node, startUnit) {
-        const centerUnit = startUnit + node.span / 2;
-
-        node.x = margin + centerUnit * unitW - unitW / 2 + boxW / 2;
-        node.y = margin + node.level * (boxH + yGap) + boxH / 2;
-
-        let childCursor = startUnit;
-
-        node.children.forEach(child => {
-          place(child, childCursor);
-          childCursor += child.span;
+        sortedChildren.forEach(child => {
+          rows.sort((a, b) => a.width - b.width);
+          const row = rows[0];
+          row.items.push(child);
+          row.width += child.subtreeWidth + (row.items.length > 1 ? gap : 0);
+          row.height = Math.max(row.height, child.subtreeHeight);
         });
+
+        rows.forEach(row => {
+          row.items.sort((a, b) => a.name.localeCompare(b.name));
+          row.width = 0;
+          row.height = 0;
+
+          row.items.forEach((child, index) => {
+            row.width += child.subtreeWidth + (index > 0 ? gap : 0);
+            row.height = Math.max(row.height, child.subtreeHeight);
+          });
+        });
+
+        const widest = Math.max(...rows.map(row => row.width));
+        const totalHeight = rows.reduce((sum, row) => sum + row.height, 0);
+        const overflow = Math.max(0, widest - maxRowWidth);
+        const balance = Math.max(...rows.map(row => row.width)) - Math.min(...rows.map(row => row.width));
+        const score = overflow * 1000 + widest * 1.5 + totalHeight * 0.7 + balance * 0.25;
+
+        if (score < bestScore) {
+          bestScore = score;
+          bestRows = rows;
+        }
       }
 
-      roots.forEach(root => {
-        place(root, cursor);
-        cursor += root.span;
+      if (!bestRows) {
+        bestRows = [];
+        let currentRow = { items: [], width: 0, height: 0 };
+
+        children.forEach(child => {
+          const nextWidth = currentRow.items.length
+            ? currentRow.width + gap + child.subtreeWidth
+            : child.subtreeWidth;
+
+          if (currentRow.items.length && nextWidth > maxRowWidth) {
+            bestRows.push(currentRow);
+            currentRow = { items: [child], width: child.subtreeWidth, height: child.subtreeHeight };
+          } else {
+            currentRow.items.push(child);
+            currentRow.width = nextWidth;
+            currentRow.height = Math.max(currentRow.height, child.subtreeHeight);
+          }
+        });
+
+        if (currentRow.items.length) {
+          bestRows.push(currentRow);
+        }
+      }
+
+      bestRows.forEach(row => {
+        row.width = 0;
+        row.height = 0;
+
+        row.items.forEach((child, index) => {
+          row.width += child.subtreeWidth + (index > 0 ? gap : 0);
+          row.height = Math.max(row.height, child.subtreeHeight);
+        });
       });
 
-      const totalSpan = roots.reduce((sum, root) => sum + root.span, 0);
-
-      const width = Math.max(
-        1000,
-        margin * 2 + Math.max(1, totalSpan) * unitW
-      );
-
-      const height = Math.max(
-        650,
-        margin * 2 + (maxLevel + 1) * (boxH + yGap)
-      );
-
-      return {
-        width,
-        height,
-        maxLevel,
-        totalSpan
-      };
+      return bestRows;
     }
 
-    function compressHorizontally(nodes, targetWidth, margin, boxW) {
-      if (!nodes.length) {
+    function computeSubtreeLayout(node, options) {
+      const ownBoxW = node.isVirtual ? 0 : options.boxW;
+      const ownBoxH = node.isVirtual ? 0 : options.boxH;
+
+      if (!node.children.length) {
+        node.rows = [];
+        node.subtreeWidth = ownBoxW;
+        node.subtreeHeight = ownBoxH;
         return;
       }
 
-      const currentMin = Math.min(...nodes.map(node => node.x));
-      const currentMax = Math.max(...nodes.map(node => node.x));
+      node.children.forEach(child => computeSubtreeLayout(child, options));
 
-      if (!isFinite(currentMin) || !isFinite(currentMax) || currentMax <= currentMin) {
-        return;
-      }
-
-      const currentCenter = (currentMin + currentMax) / 2;
-      const targetCenter = targetWidth / 2;
-
-      const availableHalf = Math.max(1, targetWidth / 2 - margin - boxW / 2);
-      const currentHalf = Math.max(1, (currentMax - currentMin) / 2);
-
-      const scale = Math.min(1, availableHalf / currentHalf);
-
-      nodes.forEach(node => {
-        node.x = targetCenter + (node.x - currentCenter) * scale;
-      });
-    }
-
-    function fitTreeToAspect(nodes, roots, requestedBoxW, boxH, requestedXGap, yGap, margin, headerHeight) {
-      const aspectLimit = Number(el("aspectLimit").value) || 1.08;
-      const minBoxW = Number(el("minBoxWidth").value) || 150;
-      const minXGap = Number(el("minXGap").value) || 12;
-      const compactStrength = Number(el("compactStrength").value) || 0.88;
-
-      let boxW = requestedBoxW;
-      let xGap = requestedXGap;
-      let layout = null;
-
-      for (let i = 0; i < 16; i++) {
-        layout = layoutTree(roots, boxW, boxH, xGap, yGap, margin);
-
-        const chartHeight = layout.height + headerHeight;
-        const allowedWidth = Math.max(
-          1000,
-          Math.round(chartHeight * aspectLimit)
-        );
-
-        if (layout.width <= allowedWidth) {
-          return {
-            layout,
-            boxW,
-            xGap,
-            chartWidth: layout.width,
-            allowedWidth,
-            compressed: false
-          };
-        }
-
-        const ratio = allowedWidth / layout.width;
-
-        const nextBoxW = Math.max(
-          minBoxW,
-          Math.round(boxW * Math.max(ratio, compactStrength))
-        );
-
-        const nextXGap = Math.max(
-          minXGap,
-          Math.round(xGap * Math.max(ratio, 0.60))
-        );
-
-        if (nextBoxW === boxW && nextXGap === xGap) {
-          compressHorizontally(nodes, allowedWidth, margin, boxW);
-          layout.width = allowedWidth;
-
-          return {
-            layout,
-            boxW,
-            xGap,
-            chartWidth: allowedWidth,
-            allowedWidth,
-            compressed: true
-          };
-        }
-
-        boxW = nextBoxW;
-        xGap = nextXGap;
-      }
-
-      const chartHeight = layout.height + headerHeight;
-      const allowedWidth = Math.max(
-        1000,
-        Math.round(chartHeight * aspectLimit)
+      const rows = packChildrenIntoRows(
+        node.children,
+        options.maxChildrenRowWidth,
+        options.siblingGap,
+        options.maxRowsPerManager
       );
 
-      if (layout.width > allowedWidth) {
-        compressHorizontally(nodes, allowedWidth, margin, boxW);
-        layout.width = allowedWidth;
+      const childBlockWidth = rows.reduce((max, row) => Math.max(max, row.width), 0);
+      const childBlockHeight = rows.reduce((sum, row, index) => {
+        return sum + row.height + (index > 0 ? options.rowGap : 0);
+      }, 0);
+
+      node.subtreeWidth = Math.max(ownBoxW, childBlockWidth);
+
+      if (node.isVirtual) {
+        node.subtreeHeight = childBlockHeight;
+      } else {
+        node.subtreeHeight = ownBoxH + options.generationGap + childBlockHeight;
       }
 
-      return {
-        layout,
-        boxW,
-        xGap,
-        chartWidth: Math.min(layout.width, allowedWidth),
-        allowedWidth,
-        compressed: true
-      };
+      let currentY = node.isVirtual ? 0 : ownBoxH + options.generationGap;
+
+      rows.forEach(row => {
+        let currentX = (node.subtreeWidth - row.width) / 2;
+
+        row.relY = currentY;
+
+        row.items.forEach(child => {
+          child.relX = currentX;
+          child.relY = currentY;
+          currentX += child.subtreeWidth + options.siblingGap;
+        });
+
+        currentY += row.height + options.rowGap;
+      });
+
+      node.rows = rows;
+    }
+
+    function assignAbsolutePositions(node, originX, originY, options) {
+      node.originX = originX;
+      node.originY = originY;
+
+      if (!node.isVirtual) {
+        node.boxX = originX + (node.subtreeWidth - options.boxW) / 2;
+        node.boxY = originY;
+        node.centerX = node.boxX + options.boxW / 2;
+        node.centerY = node.boxY + options.boxH / 2;
+      }
+
+      node.children.forEach(child => {
+        assignAbsolutePositions(
+          child,
+          originX + child.relX,
+          originY + child.relY,
+          options
+        );
+      });
     }
 
     function getVisibleChartFields(node) {
@@ -831,55 +840,211 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       const fields = [];
 
       if (el("showName").checked) {
-        fields.push({
-          text: node.name,
-          cls: "name"
-        });
+        fields.push({ text: node.name, cls: "name" });
       }
 
       if (el("showEmployeeId").checked) {
-        fields.push({
-          text: cleanText(node.row[idCol]),
-          cls: "meta"
-        });
+        fields.push({ text: cleanText(node.row[idCol]), cls: "meta" });
       }
 
       if (el("showJobRole").checked) {
-        fields.push({
-          text: cleanText(node.row[titleCol]),
-          cls: "meta"
-        });
+        fields.push({ text: cleanText(node.row[titleCol]), cls: "meta" });
       }
 
       if (el("showTypeOfWork").checked) {
-        fields.push({
-          text: cleanText(node.row[typeCol]),
-          cls: "meta"
-        });
+        fields.push({ text: cleanText(node.row[typeCol]), cls: "meta" });
       }
 
       if (el("showArea").checked) {
-        fields.push({
-          text: cleanText(node.row[areaCol]),
-          cls: "meta"
-        });
+        fields.push({ text: cleanText(node.row[areaCol]), cls: "meta" });
       }
 
       if (el("showBuilding").checked) {
-        fields.push({
-          text: cleanText(node.row[buildingCol]),
-          cls: "meta"
-        });
+        fields.push({ text: cleanText(node.row[buildingCol]), cls: "meta" });
       }
 
       if (el("showManagerId").checked) {
-        fields.push({
-          text: cleanText(node.row[managerCol]),
-          cls: "meta"
-        });
+        fields.push({ text: cleanText(node.row[managerCol]), cls: "meta" });
       }
 
-      return fields.filter(field => field.text);
+      return fields.filter(field => field.text).slice(0, 5);
+    }
+
+    function drawPath(parent, d) {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("class", "line");
+      path.setAttribute("d", d);
+      parent.appendChild(path);
+    }
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function getConnectorBusY(parent, row, options) {
+      const parentBottom = parent.boxY + options.boxH;
+      const childTop = parent.originY + row.relY;
+      const availableGap = childTop - parentBottom;
+
+      if (availableGap <= 18) {
+        return parentBottom + availableGap / 2;
+      }
+
+      const preferredOffset = Math.round(availableGap * 0.45);
+
+      return clamp(
+        parentBottom + preferredOffset,
+        parentBottom + 14,
+        childTop - 14
+      );
+    }
+
+    function getRowChildCenters(row) {
+      return row.items.map(child => ({
+        child,
+        x: child.centerX,
+        y: child.boxY
+      }));
+    }
+
+    function drawConnectors(node, layer, options) {
+      if (node.isVirtual || !node.children.length) {
+        return;
+      }
+
+      const parentBottomX = node.centerX;
+      const parentBottomY = node.boxY + options.boxH;
+
+      const rowRoutes = node.rows.map(row => {
+        const childCenters = getRowChildCenters(row);
+        const minX = Math.min(...childCenters.map(item => item.x));
+        const maxX = Math.max(...childCenters.map(item => item.x));
+        const busY = getConnectorBusY(node, row, options);
+
+        return {
+          row,
+          childCenters,
+          minX,
+          maxX,
+          busY
+        };
+      });
+
+      if (!rowRoutes.length) {
+        return;
+      }
+
+      if (node.children.length === 1) {
+        const child = node.children[0];
+        const childTopY = child.boxY;
+
+        if (Math.abs(parentBottomX - child.centerX) < 2) {
+          drawPath(
+            layer,
+            `M ${parentBottomX} ${parentBottomY}
+             V ${childTopY}`
+          );
+        } else {
+          const busY = clamp(
+            parentBottomY + (childTopY - parentBottomY) / 2,
+            parentBottomY + 14,
+            childTopY - 14
+          );
+
+          drawPath(
+            layer,
+            `M ${parentBottomX} ${parentBottomY}
+             V ${busY}
+             H ${child.centerX}
+             V ${childTopY}`
+          );
+        }
+
+        return;
+      }
+
+      const lastBusY = Math.max(...rowRoutes.map(route => route.busY));
+
+      drawPath(
+        layer,
+        `M ${parentBottomX} ${parentBottomY}
+         V ${lastBusY}`
+      );
+
+      rowRoutes.forEach(route => {
+        const busStartX = Math.min(route.minX, parentBottomX);
+        const busEndX = Math.max(route.maxX, parentBottomX);
+
+        drawPath(
+          layer,
+          `M ${busStartX} ${route.busY}
+           H ${busEndX}`
+        );
+
+        route.childCenters.forEach(({ child, x, y }) => {
+          drawPath(
+            layer,
+            `M ${x} ${route.busY}
+             V ${y}`
+          );
+        });
+      });
+    }
+
+    function drawNode(node, layer, options) {
+      if (node.isVirtual) {
+        return;
+      }
+
+      const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+
+      const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      rect.setAttribute("class", "box");
+      rect.setAttribute("x", node.boxX);
+      rect.setAttribute("y", node.boxY);
+      rect.setAttribute("width", options.boxW);
+      rect.setAttribute("height", options.boxH);
+      rect.setAttribute("rx", 10);
+      group.appendChild(rect);
+
+      const textLines = getVisibleChartFields(node);
+      const topPadding = 18;
+      const bottomPadding = 12;
+      const usableHeight = Math.max(10, options.boxH - topPadding - bottomPadding);
+      const step = textLines.length > 1
+        ? Math.min(14, usableHeight / (textLines.length - 1))
+        : 0;
+
+      textLines.forEach((line, i) => {
+        const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        text.setAttribute("class", line.cls);
+        text.setAttribute("x", node.centerX);
+        text.setAttribute("y", node.boxY + topPadding + i * step);
+        text.setAttribute("text-anchor", "middle");
+
+        const maxChars = line.cls === "name" ? 24 : 28;
+        text.textContent = line.text.length > maxChars
+          ? line.text.slice(0, maxChars - 3) + "..."
+          : line.text;
+
+        group.appendChild(text);
+      });
+
+      layer.appendChild(group);
+    }
+
+    function renderTree(node, connectorLayer, nodeLayer, options) {
+      if (!node.isVirtual) {
+        drawConnectors(node, connectorLayer, options);
+      }
+
+      node.children.forEach(child => {
+        renderTree(child, connectorLayer, nodeLayer, options);
+      });
+
+      if (!node.isVirtual) {
+        drawNode(node, nodeLayer, options);
+      }
     }
 
     function drawChart() {
@@ -898,18 +1063,14 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         return (cleanText(row[buildingCol]) || "No Building") === selectedBuilding;
       });
 
-      let boxW = Number(el("boxWidth").value) || 200;
-      const boxH = Number(el("boxHeight").value) || 82;
-      let xGap = Number(el("xGap").value) || 28;
-      const yGap = Number(el("yGap").value) || 88;
-      const margin = 40;
+      const boxW = Number(el("boxWidth").value) || 210;
+      const boxH = Number(el("boxHeight").value) || 88;
+      const siblingGap = Number(el("xGap").value) || 26;
+      const generationGap = Number(el("yGap").value) || 80;
+      const rowGap = Number(el("rowGap").value) || 34;
+      const maxRowsPerManager = Number(el("maxRowsPerManager").value) || 3;
 
-      const headerHeight = 190;
-      const logoX = 24;
-      const logoY = 20;
-      const logoW = 170;
-      const logoH = 170;
-
+      const page = getPageConfig();
       const { nodes, roots } = buildHierarchy(rows);
 
       if (!nodes.length) {
@@ -917,35 +1078,64 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         return;
       }
 
-      const fitted = fitTreeToAspect(
-        nodes,
-        roots,
+      const layoutRoot = roots.length === 1
+        ? roots[0]
+        : {
+            id: "__virtual_root__",
+            name: "",
+            row: {},
+            children: roots,
+            relX: 0,
+            relY: 0,
+            subtreeWidth: 0,
+            subtreeHeight: 0,
+            rows: [],
+            isVirtual: true
+          };
+
+      const options = {
         boxW,
         boxH,
-        xGap,
-        yGap,
-        margin,
-        headerHeight
+        siblingGap,
+        generationGap,
+        rowGap,
+        maxRowsPerManager,
+        maxChildrenRowWidth: Math.max(300, page.innerWidth - 40)
+      };
+
+      computeSubtreeLayout(layoutRoot, options);
+      assignAbsolutePositions(layoutRoot, 0, 0, options);
+
+      const rawWidth = Math.max(layoutRoot.subtreeWidth, boxW);
+      const rawHeight = Math.max(layoutRoot.subtreeHeight, boxH);
+
+      const scale = Math.min(
+        1,
+        page.innerWidth / rawWidth,
+        page.innerHeight / rawHeight
       );
 
-      boxW = fitted.boxW;
-      xGap = fitted.xGap;
+      const scaledWidth = rawWidth * scale;
+      const scaledHeight = rawHeight * scale;
 
-      const treeLayout = fitted.layout;
-      const chartWidth = Math.max(fitted.chartWidth, 1000);
-      const chartHeight = treeLayout.height + headerHeight;
-      const titleCenterX = chartWidth / 2;
-      const maxLevel = treeLayout.maxLevel;
+      const contentX = page.margin + (page.innerWidth - scaledWidth) / 2;
+      const contentY = page.margin + page.headerHeight + (page.innerHeight - scaledHeight) / 2;
 
       const svg = el("chartSvg");
-      svg.setAttribute("width", chartWidth);
-      svg.setAttribute("height", chartHeight);
-      svg.setAttribute("viewBox", `0 0 ${chartWidth} ${chartHeight}`);
+      svg.setAttribute("width", page.pageWidth);
+      svg.setAttribute("height", page.pageHeight);
+      svg.setAttribute("viewBox", `0 0 ${page.pageWidth} ${page.pageHeight}`);
       svg.innerHTML = "";
 
       const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
       defs.innerHTML = `
         <style>
+          .page-border {
+            fill: #ffffff;
+            stroke: #dbe3ee;
+            stroke-width: 1.5;
+          }
+
           .box {
             fill: #ffffff;
             stroke: #00843D;
@@ -954,6 +1144,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
           .name {
             font: bold 14px Arial;
+            fill: #172033;
           }
 
           .meta {
@@ -963,12 +1154,14 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
           .line {
             stroke: #64748b;
-            stroke-width: 1.2;
+            stroke-width: 1.3;
             fill: none;
+            stroke-linecap: square;
+            stroke-linejoin: round;
           }
 
           .chart-title {
-            font: bold 30px Arial;
+            font: bold 28px Arial;
             fill: #172033;
           }
 
@@ -976,115 +1169,76 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
             font: 14px Arial;
             fill: #637083;
           }
+
+          .page-note {
+            font: 12px Arial;
+            fill: #637083;
+          }
         </style>
       `;
-
       svg.appendChild(defs);
 
-      const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-      bg.setAttribute("x", 0);
-      bg.setAttribute("y", 0);
-      bg.setAttribute("width", chartWidth);
-      bg.setAttribute("height", chartHeight);
-      bg.setAttribute("fill", "#ffffff");
-      svg.appendChild(bg);
+      const pageRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      pageRect.setAttribute("class", "page-border");
+      pageRect.setAttribute("x", 0.5);
+      pageRect.setAttribute("y", 0.5);
+      pageRect.setAttribute("width", page.pageWidth - 1);
+      pageRect.setAttribute("height", page.pageHeight - 1);
+      svg.appendChild(pageRect);
 
       if (logoDataUrl) {
         const image = document.createElementNS("http://www.w3.org/2000/svg", "image");
         image.setAttribute("href", logoDataUrl);
-        image.setAttribute("x", logoX);
-        image.setAttribute("y", logoY);
-        image.setAttribute("width", logoW);
-        image.setAttribute("height", logoH);
+        image.setAttribute("x", page.margin);
+        image.setAttribute("y", page.margin - 4);
+        image.setAttribute("width", 120);
+        image.setAttribute("height", 120);
         image.setAttribute("preserveAspectRatio", "xMidYMid meet");
         svg.appendChild(image);
       }
 
       const title = document.createElementNS("http://www.w3.org/2000/svg", "text");
       title.setAttribute("class", "chart-title");
-      title.setAttribute("x", titleCenterX);
-      title.setAttribute("y", 78);
+      title.setAttribute("x", page.pageWidth / 2);
+      title.setAttribute("y", page.margin + 42);
       title.setAttribute("text-anchor", "middle");
       title.textContent = selectedBuilding;
       svg.appendChild(title);
 
       const subtitle = document.createElementNS("http://www.w3.org/2000/svg", "text");
       subtitle.setAttribute("class", "chart-subtitle");
-      subtitle.setAttribute("x", titleCenterX);
-      subtitle.setAttribute("y", 104);
+      subtitle.setAttribute("x", page.pageWidth / 2);
+      subtitle.setAttribute("y", page.margin + 68);
       subtitle.setAttribute("text-anchor", "middle");
-      subtitle.textContent = `${nodes.length} people`;
+      subtitle.textContent = `${nodes.length} people • ${page.label}`;
       svg.appendChild(subtitle);
 
-      nodes.forEach(node => {
-        node.children.forEach(child => {
-          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      const pageNote = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      pageNote.setAttribute("class", "page-note");
+      pageNote.setAttribute("x", page.pageWidth - page.margin);
+      pageNote.setAttribute("y", page.pageHeight - page.margin / 2);
+      pageNote.setAttribute("text-anchor", "end");
+      pageNote.textContent = `Generated for A3 • scale ${scale.toFixed(2)}x`;
+      svg.appendChild(pageNote);
 
-          const parentY = node.y + headerHeight;
-          const childY = child.y + headerHeight;
+      const chartGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      chartGroup.setAttribute("transform", `translate(${contentX}, ${contentY}) scale(${scale})`);
+      svg.appendChild(chartGroup);
 
-          const y1 = parentY + boxH / 2;
-          const y2 = childY - boxH / 2;
-          const mid = (y1 + y2) / 2;
+      const connectorLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      const nodeLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      chartGroup.appendChild(connectorLayer);
+      chartGroup.appendChild(nodeLayer);
 
-          path.setAttribute("class", "line");
-          path.setAttribute("d", `M ${node.x} ${y1} V ${mid} H ${child.x} V ${y2}`);
-
-          svg.appendChild(path);
-        });
-      });
-
-      nodes.forEach(node => {
-        const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
-
-        const renderY = node.y + headerHeight;
-        const x = node.x - boxW / 2;
-        const y = renderY - boxH / 2;
-
-        const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-        rect.setAttribute("class", "box");
-        rect.setAttribute("x", x);
-        rect.setAttribute("y", y);
-        rect.setAttribute("width", boxW);
-        rect.setAttribute("height", boxH);
-        rect.setAttribute("rx", 10);
-        group.appendChild(rect);
-
-        const textLines = getVisibleChartFields(node);
-
-        textLines.slice(0, 6).forEach((line, i) => {
-          const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-
-          text.setAttribute("class", line.cls);
-          text.setAttribute("x", node.x);
-          text.setAttribute("y", y + 20 + i * 14);
-          text.setAttribute("text-anchor", "middle");
-
-          const maxChars = boxW < 175 ? 21 : 28;
-
-          text.textContent = line.text.length > maxChars
-            ? line.text.slice(0, maxChars - 3) + "..."
-            : line.text;
-
-          group.appendChild(text);
-        });
-
-        svg.appendChild(group);
-      });
-
-      const compressionNote = fitted.compressed
-        ? `<span class="pill">Auto-compressed to fit ratio</span>`
-        : "";
+      renderTree(layoutRoot, connectorLayer, nodeLayer, options);
 
       el("stats").innerHTML = `
         <span class="pill">${nodes.length} people</span>
         <span class="pill">${roots.length} top-level node(s)</span>
-        <span class="pill">${maxLevel + 1} level(s)</span>
-        <span class="pill">${selectedBuilding}</span>
-        <span class="pill">Box width: ${boxW}px</span>
-        <span class="pill">Horizontal gap: ${xGap}px</span>
-        <span class="pill">Width/height: ${(chartWidth / chartHeight).toFixed(2)}</span>
-        ${compressionNote}
+        <span class="pill">${page.label}</span>
+        <span class="pill">Raw layout: ${Math.round(rawWidth)} × ${Math.round(rawHeight)}</span>
+        <span class="pill">Page: ${page.pageWidth} × ${page.pageHeight}</span>
+        <span class="pill">Scale: ${scale.toFixed(2)}x</span>
       `;
 
       el("downloadSvgBtn").disabled = false;
@@ -1179,10 +1333,10 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       "boxHeight",
       "xGap",
       "yGap",
-      "aspectLimit",
-      "minBoxWidth",
-      "minXGap",
-      "compactStrength",
+      "rowGap",
+      "pageMode",
+      "pageMargin",
+      "maxRowsPerManager",
       "buildingSelect",
       "showName",
       "showEmployeeId",
