@@ -17,7 +17,6 @@
       --warn-bg: #fff7ed;
       --warn-border: #fed7aa;
       --danger: #b42318;
-      --celtic-green: #00843D;
     }
 
     * {
@@ -389,7 +388,7 @@
       <div class="grid" style="margin-top: 18px;">
         <label>
           Box width
-          <input id="boxWidth" type="number" value="220">
+          <input id="boxWidth" type="number" value="200">
         </label>
 
         <label>
@@ -398,13 +397,37 @@
         </label>
 
         <label>
-          Horizontal gap between levels
-          <input id="xGap" type="number" value="90">
+          Horizontal gap
+          <input id="xGap" type="number" value="28">
         </label>
 
         <label>
-          Vertical gap between people
-          <input id="yGap" type="number" value="26">
+          Vertical gap
+          <input id="yGap" type="number" value="88">
+        </label>
+      </div>
+
+      <div class="grid" style="margin-top: 14px;">
+        <label>
+          Max width / height ratio
+          <input id="aspectLimit" type="number" step="0.01" value="1.08">
+          <span class="hint">1.00 = square, 1.08 = slightly wider than tall.</span>
+        </label>
+
+        <label>
+          Minimum box width
+          <input id="minBoxWidth" type="number" value="150">
+        </label>
+
+        <label>
+          Minimum horizontal gap
+          <input id="minXGap" type="number" value="12">
+        </label>
+
+        <label>
+          Compact strength
+          <input id="compactStrength" type="number" step="0.05" value="0.88">
+          <span class="hint">Lower = stronger compression.</span>
         </label>
       </div>
 
@@ -587,6 +610,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
           row,
           children: [],
           level: 0,
+          span: 1,
           x: 0,
           y: 0
         });
@@ -615,15 +639,8 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       };
     }
 
-    /*
-      Vertical compact layout:
-      - hierarchy flows left to right
-      - people stack vertically
-      - managers are centred vertically beside their children
-    */
     function layoutTree(roots, boxW, boxH, xGap, yGap, margin) {
       let maxLevel = 0;
-      let row = 0;
       const visited = new Set();
 
       function assignLevels(node, level) {
@@ -640,40 +657,166 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       roots.forEach(root => assignLevels(root, 0));
 
-      function layout(node) {
-        node.x = margin + node.level * (boxW + xGap) + boxW / 2;
-
+      function measureSpan(node) {
         if (!node.children.length) {
-          node.y = margin + row * (boxH + yGap) + boxH / 2;
-          row++;
-          return node.y;
+          node.span = 1;
+          return 1;
         }
 
-        const childYs = node.children.map(layout);
-        node.y = childYs.reduce((a, b) => a + b, 0) / childYs.length;
+        node.span = node.children.reduce((sum, child) => {
+          return sum + measureSpan(child);
+        }, 0);
 
-        return node.y;
+        return Math.max(1, node.span);
+      }
+
+      roots.forEach(root => measureSpan(root));
+
+      const unitW = boxW + xGap;
+      let cursor = 0;
+
+      function place(node, startUnit) {
+        const centerUnit = startUnit + node.span / 2;
+
+        node.x = margin + centerUnit * unitW - unitW / 2 + boxW / 2;
+        node.y = margin + node.level * (boxH + yGap) + boxH / 2;
+
+        let childCursor = startUnit;
+
+        node.children.forEach(child => {
+          place(child, childCursor);
+          childCursor += child.span;
+        });
       }
 
       roots.forEach(root => {
-        layout(root);
-        row++;
+        place(root, cursor);
+        cursor += root.span;
       });
 
+      const totalSpan = roots.reduce((sum, root) => sum + root.span, 0);
+
       const width = Math.max(
-        900,
-        margin * 2 + (maxLevel + 1) * (boxW + xGap)
+        1000,
+        margin * 2 + Math.max(1, totalSpan) * unitW
       );
 
       const height = Math.max(
         650,
-        margin * 2 + Math.max(1, row) * (boxH + yGap)
+        margin * 2 + (maxLevel + 1) * (boxH + yGap)
       );
 
       return {
         width,
         height,
-        maxLevel
+        maxLevel,
+        totalSpan
+      };
+    }
+
+    function compressHorizontally(nodes, targetWidth, margin, boxW) {
+      if (!nodes.length) {
+        return;
+      }
+
+      const currentMin = Math.min(...nodes.map(node => node.x));
+      const currentMax = Math.max(...nodes.map(node => node.x));
+
+      if (!isFinite(currentMin) || !isFinite(currentMax) || currentMax <= currentMin) {
+        return;
+      }
+
+      const currentCenter = (currentMin + currentMax) / 2;
+      const targetCenter = targetWidth / 2;
+
+      const availableHalf = Math.max(1, targetWidth / 2 - margin - boxW / 2);
+      const currentHalf = Math.max(1, (currentMax - currentMin) / 2);
+
+      const scale = Math.min(1, availableHalf / currentHalf);
+
+      nodes.forEach(node => {
+        node.x = targetCenter + (node.x - currentCenter) * scale;
+      });
+    }
+
+    function fitTreeToAspect(nodes, roots, requestedBoxW, boxH, requestedXGap, yGap, margin, headerHeight) {
+      const aspectLimit = Number(el("aspectLimit").value) || 1.08;
+      const minBoxW = Number(el("minBoxWidth").value) || 150;
+      const minXGap = Number(el("minXGap").value) || 12;
+      const compactStrength = Number(el("compactStrength").value) || 0.88;
+
+      let boxW = requestedBoxW;
+      let xGap = requestedXGap;
+      let layout = null;
+
+      for (let i = 0; i < 16; i++) {
+        layout = layoutTree(roots, boxW, boxH, xGap, yGap, margin);
+
+        const chartHeight = layout.height + headerHeight;
+        const allowedWidth = Math.max(
+          1000,
+          Math.round(chartHeight * aspectLimit)
+        );
+
+        if (layout.width <= allowedWidth) {
+          return {
+            layout,
+            boxW,
+            xGap,
+            chartWidth: layout.width,
+            allowedWidth,
+            compressed: false
+          };
+        }
+
+        const ratio = allowedWidth / layout.width;
+
+        const nextBoxW = Math.max(
+          minBoxW,
+          Math.round(boxW * Math.max(ratio, compactStrength))
+        );
+
+        const nextXGap = Math.max(
+          minXGap,
+          Math.round(xGap * Math.max(ratio, 0.60))
+        );
+
+        if (nextBoxW === boxW && nextXGap === xGap) {
+          compressHorizontally(nodes, allowedWidth, margin, boxW);
+          layout.width = allowedWidth;
+
+          return {
+            layout,
+            boxW,
+            xGap,
+            chartWidth: allowedWidth,
+            allowedWidth,
+            compressed: true
+          };
+        }
+
+        boxW = nextBoxW;
+        xGap = nextXGap;
+      }
+
+      const chartHeight = layout.height + headerHeight;
+      const allowedWidth = Math.max(
+        1000,
+        Math.round(chartHeight * aspectLimit)
+      );
+
+      if (layout.width > allowedWidth) {
+        compressHorizontally(nodes, allowedWidth, margin, boxW);
+        layout.width = allowedWidth;
+      }
+
+      return {
+        layout,
+        boxW,
+        xGap,
+        chartWidth: Math.min(layout.width, allowedWidth),
+        allowedWidth,
+        compressed: true
       };
     }
 
@@ -755,10 +898,10 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         return (cleanText(row[buildingCol]) || "No Building") === selectedBuilding;
       });
 
-      const boxW = Number(el("boxWidth").value) || 220;
+      let boxW = Number(el("boxWidth").value) || 200;
       const boxH = Number(el("boxHeight").value) || 82;
-      const xGap = Number(el("xGap").value) || 90;
-      const yGap = Number(el("yGap").value) || 26;
+      let xGap = Number(el("xGap").value) || 28;
+      const yGap = Number(el("yGap").value) || 88;
       const margin = 40;
 
       const headerHeight = 190;
@@ -774,9 +917,22 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         return;
       }
 
-      const treeLayout = layoutTree(roots, boxW, boxH, xGap, yGap, margin);
+      const fitted = fitTreeToAspect(
+        nodes,
+        roots,
+        boxW,
+        boxH,
+        xGap,
+        yGap,
+        margin,
+        headerHeight
+      );
 
-      const chartWidth = Math.max(treeLayout.width, 1000);
+      boxW = fitted.boxW;
+      xGap = fitted.xGap;
+
+      const treeLayout = fitted.layout;
+      const chartWidth = Math.max(fitted.chartWidth, 1000);
       const chartHeight = treeLayout.height + headerHeight;
       const titleCenterX = chartWidth / 2;
       const maxLevel = treeLayout.maxLevel;
@@ -867,12 +1023,12 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
           const parentY = node.y + headerHeight;
           const childY = child.y + headerHeight;
 
-          const x1 = node.x + boxW / 2;
-          const x2 = child.x - boxW / 2;
-          const midX = (x1 + x2) / 2;
+          const y1 = parentY + boxH / 2;
+          const y2 = childY - boxH / 2;
+          const mid = (y1 + y2) / 2;
 
           path.setAttribute("class", "line");
-          path.setAttribute("d", `M ${x1} ${parentY} H ${midX} V ${childY} H ${x2}`);
+          path.setAttribute("d", `M ${node.x} ${y1} V ${mid} H ${child.x} V ${y2}`);
 
           svg.appendChild(path);
         });
@@ -904,8 +1060,10 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
           text.setAttribute("y", y + 20 + i * 14);
           text.setAttribute("text-anchor", "middle");
 
-          text.textContent = line.text.length > 28
-            ? line.text.slice(0, 25) + "..."
+          const maxChars = boxW < 175 ? 21 : 28;
+
+          text.textContent = line.text.length > maxChars
+            ? line.text.slice(0, maxChars - 3) + "..."
             : line.text;
 
           group.appendChild(text);
@@ -914,11 +1072,19 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         svg.appendChild(group);
       });
 
+      const compressionNote = fitted.compressed
+        ? `<span class="pill">Auto-compressed to fit ratio</span>`
+        : "";
+
       el("stats").innerHTML = `
         <span class="pill">${nodes.length} people</span>
         <span class="pill">${roots.length} top-level node(s)</span>
         <span class="pill">${maxLevel + 1} level(s)</span>
         <span class="pill">${selectedBuilding}</span>
+        <span class="pill">Box width: ${boxW}px</span>
+        <span class="pill">Horizontal gap: ${xGap}px</span>
+        <span class="pill">Width/height: ${(chartWidth / chartHeight).toFixed(2)}</span>
+        ${compressionNote}
       `;
 
       el("downloadSvgBtn").disabled = false;
@@ -1013,6 +1179,10 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       "boxHeight",
       "xGap",
       "yGap",
+      "aspectLimit",
+      "minBoxWidth",
+      "minXGap",
+      "compactStrength",
       "buildingSelect",
       "showName",
       "showEmployeeId",
