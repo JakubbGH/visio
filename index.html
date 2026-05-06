@@ -119,11 +119,20 @@
       border-style: dashed;
     }
 
+    input[type="color"] {
+      height: 43px;
+      padding: 5px;
+    }
+
     .actions {
       display: flex;
       flex-wrap: wrap;
       gap: 10px;
       margin-top: 18px;
+    }
+
+    .actions.compact {
+      margin-top: 12px;
     }
 
     button {
@@ -211,6 +220,21 @@
       color: #00843D;
     }
 
+    .style-panel {
+      margin-top: 18px;
+      border: 1px solid var(--border);
+      background: #f8fafc;
+      border-radius: 16px;
+      padding: 16px;
+    }
+
+    .style-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-top: 12px;
+    }
+
     #chartWrap {
       overflow: auto;
       max-height: 80vh;
@@ -260,13 +284,15 @@
         margin-top: 14px;
       }
 
-      .grid {
+      .grid,
+      .style-grid {
         grid-template-columns: repeat(2, 1fr);
       }
     }
 
     @media (max-width: 560px) {
-      .grid {
+      .grid,
+      .style-grid {
         grid-template-columns: 1fr;
       }
     }
@@ -280,7 +306,7 @@
         <p class="eyebrow">Browser-only tool</p>
         <h1>CSV Org Chart Builder</h1>
         <p class="lead">
-          Upload your CSV, generate a readable org chart, adjust the layout visually, then export as SVG or PNG.
+          Upload your CSV, generate a readable org chart, adjust the layout visually, customise styles, then export as SVG or PNG.
         </p>
       </div>
       <div class="badge">Editable page-fit layout</div>
@@ -466,9 +492,80 @@
         <button id="downloadPngBtn" class="secondary" type="button" disabled>Download PNG</button>
       </div>
 
+      <div id="stylePanel" class="style-panel" hidden>
+        <strong id="stylePanelTitle">Style</strong>
+
+        <div class="style-grid">
+          <label>
+            Box preset
+            <select id="boxPreset">
+              <option value="green">White box, green outline</option>
+              <option value="lightBlue">Light Blue box</option>
+              <option value="blackBorder">Black border, white box, black text</option>
+              <option value="blackBox">Black box, white text</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+
+          <label>
+            Box fill
+            <input id="boxFill" type="color" value="#ffffff">
+          </label>
+
+          <label>
+            Box border
+            <input id="boxStroke" type="color" value="#00843D">
+          </label>
+
+          <label>
+            Text colour
+            <input id="boxText" type="color" value="#172033">
+          </label>
+
+          <label>
+            Line colour
+            <input id="lineStroke" type="color" value="#64748b">
+          </label>
+
+          <label>
+            Line style
+            <select id="lineStyle">
+              <option value="solid">Solid</option>
+              <option value="dotted">Dotted</option>
+              <option value="dashed">Dashed</option>
+            </select>
+          </label>
+
+          <label>
+            Parent side
+            <select id="parentSide">
+              <option value="bottom">Parent bottom</option>
+              <option value="top">Parent top</option>
+              <option value="left">Parent left</option>
+              <option value="right">Parent right</option>
+            </select>
+          </label>
+
+          <label>
+            Child side
+            <select id="childSide">
+              <option value="top">Child top</option>
+              <option value="bottom">Child bottom</option>
+              <option value="left">Child left</option>
+              <option value="right">Child right</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="actions compact">
+          <button id="applyStyleBtn" type="button">Apply</button>
+          <button id="closeStyleBtn" class="secondary" type="button">Close</button>
+        </div>
+      </div>
+
       <p class="hint">
         Edit layout mode: drag boxes to move them. Drag the green corner handle to resize a box.
-        Connectors redraw automatically.
+        Click a box to customise its colour. Click a connector line to customise its colour, style, and connection sides.
       </p>
 
       <p id="errorBox" class="error"></p>
@@ -503,6 +600,34 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     let activeDrag = null;
     let activeResize = null;
     let isRedrawingFromPointer = false;
+
+    let selectedLineKey = "";
+    let selectedNodeId = "";
+    let nodeStyles = new Map();
+    let connectorStyles = new Map();
+
+    const BOX_PRESETS = {
+      green: {
+        fill: "#ffffff",
+        stroke: "#00843D",
+        text: "#172033"
+      },
+      lightBlue: {
+        fill: "#dbeafe",
+        stroke: "#2563eb",
+        text: "#172033"
+      },
+      blackBorder: {
+        fill: "#ffffff",
+        stroke: "#000000",
+        text: "#000000"
+      },
+      blackBox: {
+        fill: "#000000",
+        stroke: "#000000",
+        text: "#ffffff"
+      }
+    };
 
     const PAGE_PRESETS = {
       landscape: { width: 1587, height: 1123, label: "Landscape" },
@@ -912,14 +1037,6 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       return fields.filter(field => field.text).slice(0, 5);
     }
 
-    function drawPath(parent, d) {
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("class", "line");
-      path.setAttribute("d", d);
-      path.setAttribute("vector-effect", "non-scaling-stroke");
-      parent.appendChild(path);
-    }
-
     function getNodeBoxW(node, options) {
       return node.boxW || options.boxW;
     }
@@ -928,38 +1045,196 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       return node.boxH || options.boxH;
     }
 
+    function getDefaultNodeStyle() {
+      return {
+        fill: "#ffffff",
+        stroke: "#00843D",
+        text: "#172033"
+      };
+    }
+
+    function getNodeStyle(node) {
+      return nodeStyles.get(node.id) || getDefaultNodeStyle();
+    }
+
+    function getDefaultConnectorStyle() {
+      return {
+        stroke: "#64748b",
+        style: "solid",
+        parentSide: "bottom",
+        childSide: "top"
+      };
+    }
+
+    function getConnectorKey(parent, child) {
+      return `${parent.id}=>${child.id}`;
+    }
+
+    function getConnectorStyle(parent, child) {
+      return connectorStyles.get(getConnectorKey(parent, child)) || getDefaultConnectorStyle();
+    }
+
+    function getStrokeDashArray(style) {
+      if (style === "dotted") {
+        return "2 5";
+      }
+
+      if (style === "dashed") {
+        return "9 6";
+      }
+
+      return "";
+    }
+
+    function getConnectionPoint(node, side, options) {
+      const boxW = getNodeBoxW(node, options);
+      const boxH = getNodeBoxH(node, options);
+
+      if (side === "top") {
+        return {
+          x: node.boxX + boxW / 2,
+          y: node.boxY
+        };
+      }
+
+      if (side === "bottom") {
+        return {
+          x: node.boxX + boxW / 2,
+          y: node.boxY + boxH
+        };
+      }
+
+      if (side === "left") {
+        return {
+          x: node.boxX,
+          y: node.boxY + boxH / 2
+        };
+      }
+
+      if (side === "right") {
+        return {
+          x: node.boxX + boxW,
+          y: node.boxY + boxH / 2
+        };
+      }
+
+      return {
+        x: node.boxX + boxW / 2,
+        y: node.boxY + boxH
+      };
+    }
+
+    function buildElbowPath(start, end) {
+      const midY = start.y + (end.y - start.y) / 2;
+      const midX = start.x + (end.x - start.x) / 2;
+      const mostlyVertical = Math.abs(end.y - start.y) >= Math.abs(end.x - start.x);
+
+      if (mostlyVertical) {
+        return `M ${start.x} ${start.y} V ${midY} H ${end.x} V ${end.y}`;
+      }
+
+      return `M ${start.x} ${start.y} H ${midX} V ${end.y} H ${end.x}`;
+    }
+
+    function drawPath(parent, d, options = {}) {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+
+      path.setAttribute("class", "line");
+      path.setAttribute("d", d);
+      path.setAttribute("vector-effect", "non-scaling-stroke");
+
+      if (options.stroke) {
+        path.setAttribute("stroke", options.stroke);
+      }
+
+      const dashArray = getStrokeDashArray(options.style);
+
+      if (dashArray) {
+        path.setAttribute("stroke-dasharray", dashArray);
+      }
+
+      if (options.clickHandler) {
+        path.style.cursor = "pointer";
+        path.setAttribute("pointer-events", "stroke");
+        path.addEventListener("click", event => {
+          event.stopPropagation();
+          options.clickHandler();
+        });
+      }
+
+      parent.appendChild(path);
+    }
+
+    function openLineStylePanel(parent, child) {
+      selectedNodeId = "";
+      selectedLineKey = getConnectorKey(parent, child);
+
+      const style = getConnectorStyle(parent, child);
+
+      el("stylePanel").hidden = false;
+      el("stylePanelTitle").textContent = "Connector style";
+
+      el("lineStroke").value = style.stroke;
+      el("lineStyle").value = style.style;
+      el("parentSide").value = style.parentSide;
+      el("childSide").value = style.childSide;
+    }
+
+    function openNodeStylePanel(node) {
+      selectedLineKey = "";
+      selectedNodeId = node.id;
+
+      const style = getNodeStyle(node);
+
+      el("stylePanel").hidden = false;
+      el("stylePanelTitle").textContent = `Box style: ${node.name}`;
+
+      el("boxPreset").value = "custom";
+      el("boxFill").value = style.fill;
+      el("boxStroke").value = style.stroke;
+      el("boxText").value = style.text;
+    }
+
+    function applyCurrentStyle() {
+      if (selectedNodeId) {
+        nodeStyles.set(selectedNodeId, {
+          fill: el("boxFill").value,
+          stroke: el("boxStroke").value,
+          text: el("boxText").value
+        });
+      }
+
+      if (selectedLineKey) {
+        connectorStyles.set(selectedLineKey, {
+          stroke: el("lineStroke").value,
+          style: el("lineStyle").value,
+          parentSide: el("parentSide").value,
+          childSide: el("childSide").value
+        });
+      }
+
+      drawChart();
+    }
+
     function drawManagerConnectors(node, layer, options) {
       if (node.isVirtual || !node.managerRow.length) {
         return;
       }
 
-      const parentX = node.centerX;
-      const parentBottomY = node.boxY + getNodeBoxH(node, options);
-      const children = node.managerRow;
-      const childTopY = Math.min(...children.map(child => child.boxY));
-      const availableGap = childTopY - parentBottomY;
-      const busY = parentBottomY + Math.max(16, Math.min(34, availableGap / 2));
+      node.managerRow.forEach(child => {
+        const style = getConnectorStyle(node, child);
+        const start = getConnectionPoint(node, style.parentSide, options);
+        const end = getConnectionPoint(child, style.childSide, options);
 
-      const minX = Math.min(...children.map(child => child.centerX));
-      const maxX = Math.max(...children.map(child => child.centerX));
-
-      if (children.length === 1) {
-        const child = children[0];
-
-        if (Math.abs(parentX - child.centerX) < 2) {
-          drawPath(layer, `M ${parentX} ${parentBottomY} V ${child.boxY}`);
-        } else {
-          drawPath(layer, `M ${parentX} ${parentBottomY} V ${busY} H ${child.centerX} V ${child.boxY}`);
-        }
-
-        return;
-      }
-
-      drawPath(layer, `M ${parentX} ${parentBottomY} V ${busY}`);
-      drawPath(layer, `M ${minX} ${busY} H ${maxX}`);
-
-      children.forEach(child => {
-        drawPath(layer, `M ${child.centerX} ${busY} V ${child.boxY}`);
+        drawPath(
+          layer,
+          buildElbowPath(start, end),
+          {
+            stroke: style.stroke,
+            style: style.style,
+            clickHandler: () => openLineStylePanel(node, child)
+          }
+        );
       });
     }
 
@@ -968,43 +1243,21 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         return;
       }
 
-      const parentX = node.centerX;
-      const parentBottomY = node.boxY + getNodeBoxH(node, options);
-
       node.leafRows.forEach(row => {
-        const children = row.items;
-        const childTopY = Math.min(...children.map(child => child.boxY));
-        const availableGap = childTopY - parentBottomY;
-        const busY = childTopY - Math.max(16, Math.min(28, availableGap / 2));
+        row.items.forEach(child => {
+          const style = getConnectorStyle(node, child);
+          const start = getConnectionPoint(node, style.parentSide, options);
+          const end = getConnectionPoint(child, style.childSide, options);
 
-        const minX = Math.min(...children.map(child => child.centerX));
-        const maxX = Math.max(...children.map(child => child.centerX));
-
-        if (children.length === 1) {
-          const child = children[0];
-
-          if (Math.abs(parentX - child.centerX) < 2) {
-            drawPath(layer, `M ${parentX} ${parentBottomY} V ${child.boxY}`);
-          } else {
-            drawPath(layer, `M ${parentX} ${parentBottomY} V ${busY} H ${child.centerX} V ${child.boxY}`);
-          }
-
-          return;
-        }
-
-        const branchX = Math.max(minX, Math.min(maxX, parentX));
-
-        if (Math.abs(parentX - branchX) < 2) {
-          drawPath(layer, `M ${parentX} ${parentBottomY} V ${busY}`);
-        } else {
-          const turnY = parentBottomY + Math.max(12, (busY - parentBottomY) / 2);
-          drawPath(layer, `M ${parentX} ${parentBottomY} V ${turnY} H ${branchX} V ${busY}`);
-        }
-
-        drawPath(layer, `M ${minX} ${busY} H ${maxX}`);
-
-        children.forEach(child => {
-          drawPath(layer, `M ${child.centerX} ${busY} V ${child.boxY}`);
+          drawPath(
+            layer,
+            buildElbowPath(start, end),
+            {
+              stroke: style.stroke,
+              style: style.style,
+              clickHandler: () => openLineStylePanel(node, child)
+            }
+          );
         });
       });
     }
@@ -1021,10 +1274,11 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       const boxW = getNodeBoxW(node, options);
       const boxH = getNodeBoxH(node, options);
+      const style = getNodeStyle(node);
 
       const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
       group.setAttribute("data-node-id", node.id);
-      group.style.cursor = editMode ? "move" : "default";
+      group.style.cursor = editMode ? "move" : "pointer";
 
       const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
       rect.setAttribute("class", "box");
@@ -1033,30 +1287,50 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       rect.setAttribute("width", boxW);
       rect.setAttribute("height", boxH);
       rect.setAttribute("rx", 10);
+      rect.setAttribute("fill", style.fill);
+      rect.setAttribute("stroke", style.stroke);
       group.appendChild(rect);
 
       const textLines = getVisibleChartFields(node);
-      const lineHeight = 14;
-      const nameLineHeight = 15;
+      const lineCount = Math.max(1, textLines.length);
 
-      const totalTextHeight = textLines.reduce((sum, line) => {
-        return sum + (line.cls === "name" ? nameLineHeight : lineHeight);
-      }, 0);
+      const baseFont = Math.max(
+        8,
+        Math.min(
+          16,
+          Math.floor(boxH / (lineCount + 2))
+        )
+      );
 
-      let y = node.boxY + (boxH - totalTextHeight) / 2 + 11;
+      const nameFont = Math.min(baseFont + 2, 18);
+      const metaFont = baseFont;
 
-      textLines.forEach(line => {
+      const lineHeights = textLines.map(line => {
+        return line.cls === "name" ? nameFont + 3 : metaFont + 3;
+      });
+
+      const totalTextHeight = lineHeights.reduce((sum, h) => sum + h, 0);
+      let y = node.boxY + (boxH - totalTextHeight) / 2 + (lineHeights[0] || 12) - 3;
+
+      textLines.forEach((line, i) => {
         const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+
+        const fontSize = line.cls === "name" ? nameFont : metaFont;
+        const fontWeight = line.cls === "name" ? "700" : "400";
 
         text.setAttribute("class", line.cls);
         text.setAttribute("x", node.boxX + boxW / 2);
         text.setAttribute("y", y);
         text.setAttribute("text-anchor", "middle");
         text.setAttribute("pointer-events", "none");
+        text.setAttribute("fill", style.text);
+        text.setAttribute("font-size", fontSize);
+        text.setAttribute("font-weight", fontWeight);
+        text.setAttribute("font-family", "Arial, Helvetica, sans-serif");
 
         const maxChars = Math.max(
-          14,
-          Math.floor(boxW / (line.cls === "name" ? 8.3 : 7.2))
+          10,
+          Math.floor(boxW / (line.cls === "name" ? fontSize * 0.58 : fontSize * 0.52))
         );
 
         text.textContent = line.text.length > maxChars
@@ -1064,8 +1338,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
           : line.text;
 
         group.appendChild(text);
-
-        y += line.cls === "name" ? nameLineHeight : lineHeight;
+        y += lineHeights[i];
       });
 
       if (editMode) {
@@ -1092,6 +1365,11 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
           startDragNode(event, node, options);
         });
       }
+
+      group.addEventListener("click", event => {
+        event.stopPropagation();
+        openNodeStylePanel(node);
+      });
 
       layer.appendChild(group);
     }
@@ -1513,19 +1791,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
           }
 
           .box {
-            fill: #ffffff;
-            stroke: #00843D;
             stroke-width: 1.6;
-          }
-
-          .name {
-            font: bold 14px Arial;
-            fill: #172033;
-          }
-
-          .meta {
-            font: 12px Arial;
-            fill: #334155;
           }
 
           .line {
@@ -1743,6 +2009,26 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     el("chartSvg").addEventListener("pointermove", updateActiveEdit);
     el("chartSvg").addEventListener("pointerup", endActiveEdit);
     el("chartSvg").addEventListener("pointercancel", endActiveEdit);
+
+    el("boxPreset").addEventListener("change", () => {
+      const preset = BOX_PRESETS[el("boxPreset").value];
+
+      if (!preset) {
+        return;
+      }
+
+      el("boxFill").value = preset.fill;
+      el("boxStroke").value = preset.stroke;
+      el("boxText").value = preset.text;
+    });
+
+    el("applyStyleBtn").addEventListener("click", applyCurrentStyle);
+
+    el("closeStyleBtn").addEventListener("click", () => {
+      el("stylePanel").hidden = true;
+      selectedLineKey = "";
+      selectedNodeId = "";
+    });
   </script>
 </body>
 </html>
