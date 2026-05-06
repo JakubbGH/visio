@@ -565,7 +565,8 @@
 
       <p class="hint">
         Edit layout mode: drag boxes to move them. Drag the green corner handle to resize a box.
-        Click a box to customise its colour. Click a connector line to customise its colour, style, and connection sides.
+        Click a box to customise its colour. Click a connector line to customise it.
+        In edit mode, drag a connector line or its small handle to move the elbow route.
       </p>
 
       <p id="errorBox" class="error"></p>
@@ -599,6 +600,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     let lastLayoutSignature = "";
     let activeDrag = null;
     let activeResize = null;
+    let activeLineDrag = null;
     let isRedrawingFromPointer = false;
 
     let selectedLineKey = "";
@@ -1062,7 +1064,9 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         stroke: "#64748b",
         style: "solid",
         parentSide: "bottom",
-        childSide: "top"
+        childSide: "top",
+        offsetX: 0,
+        offsetY: 0
       };
     }
 
@@ -1093,47 +1097,80 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       if (side === "top") {
         return {
           x: node.boxX + boxW / 2,
-          y: node.boxY
+          y: node.boxY,
+          side
         };
       }
 
       if (side === "bottom") {
         return {
           x: node.boxX + boxW / 2,
-          y: node.boxY + boxH
+          y: node.boxY + boxH,
+          side
         };
       }
 
       if (side === "left") {
         return {
           x: node.boxX,
-          y: node.boxY + boxH / 2
+          y: node.boxY + boxH / 2,
+          side
         };
       }
 
       if (side === "right") {
         return {
           x: node.boxX + boxW,
-          y: node.boxY + boxH / 2
+          y: node.boxY + boxH / 2,
+          side
         };
       }
 
       return {
         x: node.boxX + boxW / 2,
-        y: node.boxY + boxH
+        y: node.boxY + boxH,
+        side: "bottom"
       };
     }
 
-    function buildElbowPath(start, end) {
-      const midY = start.y + (end.y - start.y) / 2;
-      const midX = start.x + (end.x - start.x) / 2;
-      const mostlyVertical = Math.abs(end.y - start.y) >= Math.abs(end.x - start.x);
+    function buildElbowPath(start, end, style = {}) {
+      const offsetX = Number(style.offsetX) || 0;
+      const offsetY = Number(style.offsetY) || 0;
 
-      if (mostlyVertical) {
-        return `M ${start.x} ${start.y} V ${midY} H ${end.x} V ${end.y}`;
+      /*
+        Bottom/top connectors always leave vertically first.
+        This avoids horizontal line segments sitting directly on top of a box outline.
+      */
+      if (start.side === "bottom" || start.side === "top") {
+        const midY = start.y + (end.y - start.y) / 2 + offsetY;
+
+        return `
+          M ${start.x} ${start.y}
+          V ${midY}
+          H ${end.x}
+          V ${end.y}
+        `;
       }
 
-      return `M ${start.x} ${start.y} H ${midX} V ${end.y} H ${end.x}`;
+      if (start.side === "left" || start.side === "right") {
+        const midX = start.x + (end.x - start.x) / 2 + offsetX;
+
+        return `
+          M ${start.x} ${start.y}
+          H ${midX}
+          V ${end.y}
+          H ${end.x}
+        `;
+      }
+
+      const midY = start.y + (end.y - start.y) / 2 + offsetY;
+
+      return `
+        M ${start.x} ${start.y}
+        V ${midY}
+        H ${end.x}
+        V ${end.y}
+      `;
     }
 
     function drawPath(parent, d, options = {}) {
@@ -1153,16 +1190,63 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         path.setAttribute("stroke-dasharray", dashArray);
       }
 
+      path.setAttribute("pointer-events", "stroke");
+      path.style.cursor = editMode && options.connectorKey ? "grab" : "pointer";
+
       if (options.clickHandler) {
-        path.style.cursor = "pointer";
-        path.setAttribute("pointer-events", "stroke");
         path.addEventListener("click", event => {
           event.stopPropagation();
           options.clickHandler();
         });
       }
 
+      if (options.connectorKey) {
+        path.addEventListener("pointerdown", event => {
+          if (!editMode) {
+            return;
+          }
+
+          event.stopPropagation();
+          startDragLine(event, options.connectorKey);
+        });
+      }
+
       parent.appendChild(path);
+    }
+
+    function drawLineHandle(parent, start, end, style, connectorKey) {
+      if (!editMode) {
+        return;
+      }
+
+      const offsetX = Number(style.offsetX) || 0;
+      const offsetY = Number(style.offsetY) || 0;
+
+      let handleX;
+      let handleY;
+
+      if (start.side === "left" || start.side === "right") {
+        handleX = start.x + (end.x - start.x) / 2 + offsetX;
+        handleY = start.y + (end.y - start.y) / 2;
+      } else {
+        handleX = start.x + (end.x - start.x) / 2;
+        handleY = start.y + (end.y - start.y) / 2 + offsetY;
+      }
+
+      const handle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      handle.setAttribute("cx", handleX);
+      handle.setAttribute("cy", handleY);
+      handle.setAttribute("r", 6);
+      handle.setAttribute("class", "line-handle");
+      handle.setAttribute("data-connector-key", connectorKey);
+      handle.style.cursor = "grab";
+
+      handle.addEventListener("pointerdown", event => {
+        event.stopPropagation();
+        startDragLine(event, connectorKey);
+      });
+
+      parent.appendChild(handle);
     }
 
     function openLineStylePanel(parent, child) {
@@ -1205,7 +1289,10 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       }
 
       if (selectedLineKey) {
+        const current = connectorStyles.get(selectedLineKey) || getDefaultConnectorStyle();
+
         connectorStyles.set(selectedLineKey, {
+          ...current,
           stroke: el("lineStroke").value,
           style: el("lineStyle").value,
           parentSide: el("parentSide").value,
@@ -1222,19 +1309,23 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       }
 
       node.managerRow.forEach(child => {
+        const connectorKey = getConnectorKey(node, child);
         const style = getConnectorStyle(node, child);
         const start = getConnectionPoint(node, style.parentSide, options);
         const end = getConnectionPoint(child, style.childSide, options);
 
         drawPath(
           layer,
-          buildElbowPath(start, end),
+          buildElbowPath(start, end, style),
           {
             stroke: style.stroke,
             style: style.style,
+            connectorKey,
             clickHandler: () => openLineStylePanel(node, child)
           }
         );
+
+        drawLineHandle(layer, start, end, style, connectorKey);
       });
     }
 
@@ -1245,19 +1336,23 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       node.leafRows.forEach(row => {
         row.items.forEach(child => {
+          const connectorKey = getConnectorKey(node, child);
           const style = getConnectorStyle(node, child);
           const start = getConnectionPoint(node, style.parentSide, options);
           const end = getConnectionPoint(child, style.childSide, options);
 
           drawPath(
             layer,
-            buildElbowPath(start, end),
+            buildElbowPath(start, end, style),
             {
               stroke: style.stroke,
               style: style.style,
+              connectorKey,
               clickHandler: () => openLineStylePanel(node, child)
             }
           );
+
+          drawLineHandle(layer, start, end, style, connectorKey);
         });
       });
     }
@@ -1630,7 +1725,74 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       }
     }
 
+    function startDragLine(event, connectorKey) {
+      if (!editMode) {
+        return;
+      }
+
+      const svg = el("chartSvg");
+      const chartGroup = document.getElementById("chartGroup");
+
+      if (!chartGroup) {
+        return;
+      }
+
+      const start = getChartLocalPoint(event, svg, chartGroup);
+      const existing = connectorStyles.get(connectorKey) || getDefaultConnectorStyle();
+
+      activeLineDrag = {
+        connectorKey,
+        startX: start.x,
+        startY: start.y,
+        originalOffsetX: Number(existing.offsetX) || 0,
+        originalOffsetY: Number(existing.offsetY) || 0
+      };
+
+      try {
+        svg.setPointerCapture(event.pointerId);
+      } catch (error) {
+        // ignore
+      }
+    }
+
+    function updateActiveLineDrag(event) {
+      if (!editMode || !activeLineDrag || isRedrawingFromPointer) {
+        return;
+      }
+
+      const svg = el("chartSvg");
+      const chartGroup = document.getElementById("chartGroup");
+
+      if (!chartGroup) {
+        return;
+      }
+
+      const point = getChartLocalPoint(event, svg, chartGroup);
+      const dx = point.x - activeLineDrag.startX;
+      const dy = point.y - activeLineDrag.startY;
+
+      const current = connectorStyles.get(activeLineDrag.connectorKey) || getDefaultConnectorStyle();
+
+      connectorStyles.set(activeLineDrag.connectorKey, {
+        ...current,
+        offsetX: activeLineDrag.originalOffsetX + dx,
+        offsetY: activeLineDrag.originalOffsetY + dy
+      });
+
+      isRedrawingFromPointer = true;
+
+      requestAnimationFrame(() => {
+        drawChart();
+        isRedrawingFromPointer = false;
+      });
+    }
+
     function updateActiveEdit(event) {
+      if (activeLineDrag) {
+        updateActiveLineDrag(event);
+        return;
+      }
+
       if (!editMode || (!activeDrag && !activeResize) || isRedrawingFromPointer) {
         return;
       }
@@ -1663,6 +1825,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       }
 
       isRedrawingFromPointer = true;
+
       requestAnimationFrame(() => {
         drawChart();
         isRedrawingFromPointer = false;
@@ -1670,12 +1833,13 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     }
 
     function endActiveEdit(event) {
-      if (!activeDrag && !activeResize) {
+      if (!activeDrag && !activeResize && !activeLineDrag) {
         return;
       }
 
       activeDrag = null;
       activeResize = null;
+      activeLineDrag = null;
 
       try {
         el("chartSvg").releasePointerCapture(event.pointerId);
@@ -1771,7 +1935,6 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       );
 
       const scaledWidth = rawWidth * scale;
-
       const contentX = page.margin + (page.innerWidth - scaledWidth) / 2;
       const contentY = page.margin + page.headerHeight + 6;
 
@@ -1806,6 +1969,12 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
             fill: #00843D;
             stroke: #ffffff;
             stroke-width: 1;
+          }
+
+          .line-handle {
+            fill: #ffffff;
+            stroke: #64748b;
+            stroke-width: 1.5;
           }
 
           .chart-title {
