@@ -62,6 +62,10 @@
       margin: 0 0 12px;
     }
 
+    h3 {
+      margin: 0 0 10px;
+    }
+
     .lead {
       max-width: 760px;
       margin: 14px 0 0;
@@ -129,10 +133,6 @@
       flex-wrap: wrap;
       gap: 10px;
       margin-top: 18px;
-    }
-
-    .actions.compact {
-      margin-top: 12px;
     }
 
     button {
@@ -220,19 +220,37 @@
       color: #00843D;
     }
 
-    .style-panel {
-      margin-top: 18px;
+    .preview-layout {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .preview-sidebar {
+      position: sticky;
+      top: 16px;
       border: 1px solid var(--border);
+      border-radius: 18px;
       background: #f8fafc;
-      border-radius: 16px;
       padding: 16px;
     }
 
-    .style-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 12px;
+    .preview-sidebar label {
       margin-top: 12px;
+    }
+
+    .sidebar-hint {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+      margin: 0 0 12px;
+    }
+
+    .sidebar-actions {
+      display: grid;
+      gap: 8px;
+      margin-top: 14px;
     }
 
     #chartWrap {
@@ -284,15 +302,21 @@
         margin-top: 14px;
       }
 
-      .grid,
-      .style-grid {
+      .grid {
         grid-template-columns: repeat(2, 1fr);
+      }
+
+      .preview-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .preview-sidebar {
+        position: static;
       }
     }
 
     @media (max-width: 560px) {
-      .grid,
-      .style-grid {
+      .grid {
         grid-template-columns: 1fr;
       }
     }
@@ -492,81 +516,9 @@
         <button id="downloadPngBtn" class="secondary" type="button" disabled>Download PNG</button>
       </div>
 
-      <div id="stylePanel" class="style-panel" hidden>
-        <strong id="stylePanelTitle">Style</strong>
-
-        <div class="style-grid">
-          <label>
-            Box preset
-            <select id="boxPreset">
-              <option value="green">White box, green outline</option>
-              <option value="lightBlue">Light Blue box</option>
-              <option value="blackBorder">Black border, white box, black text</option>
-              <option value="blackBox">Black box, white text</option>
-              <option value="custom">Custom</option>
-            </select>
-          </label>
-
-          <label>
-            Box fill
-            <input id="boxFill" type="color" value="#ffffff">
-          </label>
-
-          <label>
-            Box border
-            <input id="boxStroke" type="color" value="#00843D">
-          </label>
-
-          <label>
-            Text colour
-            <input id="boxText" type="color" value="#172033">
-          </label>
-
-          <label>
-            Line colour
-            <input id="lineStroke" type="color" value="#64748b">
-          </label>
-
-          <label>
-            Line style
-            <select id="lineStyle">
-              <option value="solid">Solid</option>
-              <option value="dotted">Dotted</option>
-              <option value="dashed">Dashed</option>
-            </select>
-          </label>
-
-          <label>
-            Parent side
-            <select id="parentSide">
-              <option value="bottom">Parent bottom</option>
-              <option value="top">Parent top</option>
-              <option value="left">Parent left</option>
-              <option value="right">Parent right</option>
-            </select>
-          </label>
-
-          <label>
-            Child side
-            <select id="childSide">
-              <option value="top">Child top</option>
-              <option value="bottom">Child bottom</option>
-              <option value="left">Child left</option>
-              <option value="right">Child right</option>
-            </select>
-          </label>
-        </div>
-
-        <div class="actions compact">
-          <button id="applyStyleBtn" type="button">Apply</button>
-          <button id="closeStyleBtn" class="secondary" type="button">Close</button>
-        </div>
-      </div>
-
       <p class="hint">
         Edit layout mode: drag boxes to move them. Drag the green corner handle to resize a box.
-        Click a box to customise its colour. Click a connector line to customise it.
-        In edit mode, drag a connector line or its small handle to move the elbow route.
+        Click a box or connector to customise it in the left panel beside the preview.
       </p>
 
       <p id="errorBox" class="error"></p>
@@ -575,8 +527,88 @@
     <section class="card">
       <h2>2. Chart</h2>
       <div class="stats" id="stats"></div>
-      <div id="chartWrap">
-        <svg id="chartSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+
+      <div class="preview-layout">
+        <aside class="preview-sidebar">
+          <h3>Customise selection</h3>
+
+          <p id="selectionHint" class="sidebar-hint">
+            Click a box or connector line to customise it.
+          </p>
+
+          <div id="boxControls" hidden>
+            <label>
+              Box preset
+              <select id="boxPreset">
+                <option value="green">White box, green outline</option>
+                <option value="lightBlue">Light Blue box</option>
+                <option value="blackBorder">Black border, white box, black text</option>
+                <option value="blackBox">Black box, white text</option>
+                <option value="custom">Custom</option>
+              </select>
+            </label>
+
+            <label>
+              Box fill
+              <input id="boxFill" type="color" value="#ffffff">
+            </label>
+
+            <label>
+              Box border
+              <input id="boxStroke" type="color" value="#00843D">
+            </label>
+
+            <label>
+              Text colour
+              <input id="boxText" type="color" value="#172033">
+            </label>
+          </div>
+
+          <div id="lineControls" hidden>
+            <label>
+              Line colour
+              <input id="lineStroke" type="color" value="#64748b">
+            </label>
+
+            <label>
+              Line style
+              <select id="lineStyle">
+                <option value="solid">Solid</option>
+                <option value="dotted">Dotted</option>
+                <option value="dashed">Dashed</option>
+              </select>
+            </label>
+
+            <label>
+              Parent side
+              <select id="parentSide">
+                <option value="bottom">Parent bottom</option>
+                <option value="top">Parent top</option>
+                <option value="left">Parent left</option>
+                <option value="right">Parent right</option>
+              </select>
+            </label>
+
+            <label>
+              Child side
+              <select id="childSide">
+                <option value="top">Child top</option>
+                <option value="bottom">Child bottom</option>
+                <option value="left">Child left</option>
+                <option value="right">Child right</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="sidebar-actions">
+            <button id="applyStyleBtn" type="button" disabled>Apply style</button>
+            <button id="clearSelectionBtn" class="secondary" type="button">Clear selection</button>
+          </div>
+        </aside>
+
+        <div id="chartWrap">
+          <svg id="chartSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
       </div>
     </section>
 
@@ -603,8 +635,10 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     let activeLineDrag = null;
     let isRedrawingFromPointer = false;
 
+    let selectedType = "";
     let selectedLineKey = "";
     let selectedNodeId = "";
+
     let nodeStyles = new Map();
     let connectorStyles = new Map();
 
@@ -849,10 +883,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         }
       });
 
-      return {
-        managerChildren,
-        leafChildren
-      };
+      return { managerChildren, leafChildren };
     }
 
     function packLeavesIntoRows(leaves, maxWidth, boxW, gap) {
@@ -1095,52 +1126,28 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       const boxH = getNodeBoxH(node, options);
 
       if (side === "top") {
-        return {
-          x: node.boxX + boxW / 2,
-          y: node.boxY,
-          side
-        };
+        return { x: node.boxX + boxW / 2, y: node.boxY, side };
       }
 
       if (side === "bottom") {
-        return {
-          x: node.boxX + boxW / 2,
-          y: node.boxY + boxH,
-          side
-        };
+        return { x: node.boxX + boxW / 2, y: node.boxY + boxH, side };
       }
 
       if (side === "left") {
-        return {
-          x: node.boxX,
-          y: node.boxY + boxH / 2,
-          side
-        };
+        return { x: node.boxX, y: node.boxY + boxH / 2, side };
       }
 
       if (side === "right") {
-        return {
-          x: node.boxX + boxW,
-          y: node.boxY + boxH / 2,
-          side
-        };
+        return { x: node.boxX + boxW, y: node.boxY + boxH / 2, side };
       }
 
-      return {
-        x: node.boxX + boxW / 2,
-        y: node.boxY + boxH,
-        side: "bottom"
-      };
+      return { x: node.boxX + boxW / 2, y: node.boxY + boxH, side: "bottom" };
     }
 
     function buildElbowPath(start, end, style = {}) {
       const offsetX = Number(style.offsetX) || 0;
       const offsetY = Number(style.offsetY) || 0;
 
-      /*
-        Bottom/top connectors always leave vertically first.
-        This avoids horizontal line segments sitting directly on top of a box outline.
-      */
       if (start.side === "bottom" || start.side === "top") {
         const midY = start.y + (end.y - start.y) / 2 + offsetY;
 
@@ -1173,10 +1180,102 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       `;
     }
 
+    function clearSelection() {
+      selectedType = "";
+      selectedNodeId = "";
+      selectedLineKey = "";
+      updateSelectionPanel();
+      drawChart();
+    }
+
+    function updateSelectionPanel() {
+      const hasNode = selectedType === "node" && selectedNodeId;
+      const hasLine = selectedType === "line" && selectedLineKey;
+
+      el("boxControls").hidden = !hasNode;
+      el("lineControls").hidden = !hasLine;
+      el("applyStyleBtn").disabled = !hasNode && !hasLine;
+
+      if (!hasNode && !hasLine) {
+        el("selectionHint").textContent = "Click a box or connector line to customise it.";
+        return;
+      }
+
+      if (hasNode) {
+        el("selectionHint").textContent = "Box selected. Adjust colours below, then apply.";
+        return;
+      }
+
+      if (hasLine) {
+        el("selectionHint").textContent = "Connector selected. Adjust line options below, then apply.";
+      }
+    }
+
+    function selectNode(node) {
+      selectedType = "node";
+      selectedNodeId = node.id;
+      selectedLineKey = "";
+
+      const style = getNodeStyle(node);
+
+      el("boxPreset").value = "custom";
+      el("boxFill").value = style.fill;
+      el("boxStroke").value = style.stroke;
+      el("boxText").value = style.text;
+
+      updateSelectionPanel();
+      drawChart();
+    }
+
+    function selectLine(parent, child) {
+      selectedType = "line";
+      selectedLineKey = getConnectorKey(parent, child);
+      selectedNodeId = "";
+
+      const style = getConnectorStyle(parent, child);
+
+      el("lineStroke").value = style.stroke;
+      el("lineStyle").value = style.style;
+      el("parentSide").value = style.parentSide;
+      el("childSide").value = style.childSide;
+
+      updateSelectionPanel();
+      drawChart();
+    }
+
+    function applyCurrentStyle() {
+      if (selectedType === "node" && selectedNodeId) {
+        nodeStyles.set(selectedNodeId, {
+          fill: el("boxFill").value,
+          stroke: el("boxStroke").value,
+          text: el("boxText").value
+        });
+      }
+
+      if (selectedType === "line" && selectedLineKey) {
+        const current = connectorStyles.get(selectedLineKey) || getDefaultConnectorStyle();
+
+        connectorStyles.set(selectedLineKey, {
+          ...current,
+          stroke: el("lineStroke").value,
+          style: el("lineStyle").value,
+          parentSide: el("parentSide").value,
+          childSide: el("childSide").value
+        });
+      }
+
+      drawChart();
+    }
+
     function drawPath(parent, d, options = {}) {
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
 
       path.setAttribute("class", "line");
+
+      if (options.connectorKey && selectedType === "line" && selectedLineKey === options.connectorKey) {
+        path.classList.add("selected-line");
+      }
+
       path.setAttribute("d", d);
       path.setAttribute("vector-effect", "non-scaling-stroke");
 
@@ -1238,7 +1337,6 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       handle.setAttribute("cy", handleY);
       handle.setAttribute("r", 6);
       handle.setAttribute("class", "line-handle");
-      handle.setAttribute("data-connector-key", connectorKey);
       handle.style.cursor = "grab";
 
       handle.addEventListener("pointerdown", event => {
@@ -1247,60 +1345,6 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       });
 
       parent.appendChild(handle);
-    }
-
-    function openLineStylePanel(parent, child) {
-      selectedNodeId = "";
-      selectedLineKey = getConnectorKey(parent, child);
-
-      const style = getConnectorStyle(parent, child);
-
-      el("stylePanel").hidden = false;
-      el("stylePanelTitle").textContent = "Connector style";
-
-      el("lineStroke").value = style.stroke;
-      el("lineStyle").value = style.style;
-      el("parentSide").value = style.parentSide;
-      el("childSide").value = style.childSide;
-    }
-
-    function openNodeStylePanel(node) {
-      selectedLineKey = "";
-      selectedNodeId = node.id;
-
-      const style = getNodeStyle(node);
-
-      el("stylePanel").hidden = false;
-      el("stylePanelTitle").textContent = `Box style: ${node.name}`;
-
-      el("boxPreset").value = "custom";
-      el("boxFill").value = style.fill;
-      el("boxStroke").value = style.stroke;
-      el("boxText").value = style.text;
-    }
-
-    function applyCurrentStyle() {
-      if (selectedNodeId) {
-        nodeStyles.set(selectedNodeId, {
-          fill: el("boxFill").value,
-          stroke: el("boxStroke").value,
-          text: el("boxText").value
-        });
-      }
-
-      if (selectedLineKey) {
-        const current = connectorStyles.get(selectedLineKey) || getDefaultConnectorStyle();
-
-        connectorStyles.set(selectedLineKey, {
-          ...current,
-          stroke: el("lineStroke").value,
-          style: el("lineStyle").value,
-          parentSide: el("parentSide").value,
-          childSide: el("childSide").value
-        });
-      }
-
-      drawChart();
     }
 
     function drawManagerConnectors(node, layer, options) {
@@ -1321,7 +1365,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
             stroke: style.stroke,
             style: style.style,
             connectorKey,
-            clickHandler: () => openLineStylePanel(node, child)
+            clickHandler: () => selectLine(node, child)
           }
         );
 
@@ -1348,7 +1392,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
               stroke: style.stroke,
               style: style.style,
               connectorKey,
-              clickHandler: () => openLineStylePanel(node, child)
+              clickHandler: () => selectLine(node, child)
             }
           );
 
@@ -1386,6 +1430,19 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       rect.setAttribute("stroke", style.stroke);
       group.appendChild(rect);
 
+      if (selectedType === "node" && selectedNodeId === node.id) {
+        const highlight = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+
+        highlight.setAttribute("class", "selection-outline");
+        highlight.setAttribute("x", node.boxX - 5);
+        highlight.setAttribute("y", node.boxY - 5);
+        highlight.setAttribute("width", boxW + 10);
+        highlight.setAttribute("height", boxH + 10);
+        highlight.setAttribute("rx", 13);
+
+        group.appendChild(highlight);
+      }
+
       const textLines = getVisibleChartFields(node);
       const lineCount = Math.max(1, textLines.length);
 
@@ -1413,7 +1470,6 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         const fontSize = line.cls === "name" ? nameFont : metaFont;
         const fontWeight = line.cls === "name" ? "700" : "400";
 
-        text.setAttribute("class", line.cls);
         text.setAttribute("x", node.boxX + boxW / 2);
         text.setAttribute("y", y);
         text.setAttribute("text-anchor", "middle");
@@ -1463,7 +1519,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       group.addEventListener("click", event => {
         event.stopPropagation();
-        openNodeStylePanel(node);
+        selectNode(node);
       });
 
       layer.appendChild(group);
@@ -1965,6 +2021,19 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
             stroke-linejoin: miter;
           }
 
+          .selected-line {
+            stroke: #f59e0b !important;
+            stroke-width: 3 !important;
+          }
+
+          .selection-outline {
+            fill: none;
+            stroke: #f59e0b;
+            stroke-width: 3;
+            stroke-dasharray: 7 5;
+            pointer-events: none;
+          }
+
           .resize-handle {
             fill: #00843D;
             stroke: #ffffff;
@@ -2051,6 +2120,8 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       el("downloadPngBtn").disabled = false;
       el("editModeBtn").disabled = false;
       el("resetLayoutBtn").disabled = false;
+
+      updateSelectionPanel();
     }
 
     function downloadSVG() {
@@ -2179,6 +2250,12 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     el("chartSvg").addEventListener("pointerup", endActiveEdit);
     el("chartSvg").addEventListener("pointercancel", endActiveEdit);
 
+    el("chartSvg").addEventListener("click", event => {
+      if (event.target.id === "chartSvg") {
+        clearSelection();
+      }
+    });
+
     el("boxPreset").addEventListener("change", () => {
       const preset = BOX_PRESETS[el("boxPreset").value];
 
@@ -2192,12 +2269,9 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     });
 
     el("applyStyleBtn").addEventListener("click", applyCurrentStyle);
+    el("clearSelectionBtn").addEventListener("click", clearSelection);
 
-    el("closeStyleBtn").addEventListener("click", () => {
-      el("stylePanel").hidden = true;
-      selectedLineKey = "";
-      selectedNodeId = "";
-    });
+    updateSelectionPanel();
   </script>
 </body>
 </html>
