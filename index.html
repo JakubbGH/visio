@@ -280,7 +280,7 @@
         <p class="eyebrow">Browser-only tool</p>
         <h1>CSV Org Chart Builder</h1>
         <p class="lead">
-          Upload your Visio-ready CSV and generate building-based org charts directly in the browser.
+          Upload your Visio-ready CSV and generate readable building-based org charts directly in the browser.
           Export as SVG or PNG.
         </p>
       </div>
@@ -397,22 +397,40 @@
         </label>
 
         <label>
-          Sibling gap
-          <input id="xGap" type="number" value="26">
+          Manager subtree gap
+          <input id="managerGap" type="number" value="34">
         </label>
 
         <label>
           Generation gap
-          <input id="yGap" type="number" value="86">
+          <input id="generationGap" type="number" value="82">
         </label>
       </div>
 
       <div class="grid" style="margin-top: 14px;">
         <label>
-          Child row gap
-          <input id="rowGap" type="number" value="42">
+          Leaf gap
+          <input id="leafGap" type="number" value="22">
         </label>
 
+        <label>
+          Leaf row gap
+          <input id="leafRowGap" type="number" value="34">
+        </label>
+
+        <label>
+          Leaf section gap
+          <input id="leafSectionGap" type="number" value="58">
+        </label>
+
+        <label>
+          Max leaf row width
+          <input id="maxLeafRowWidth" type="number" value="1450">
+          <span class="hint">Only people with no reports are wrapped.</span>
+        </label>
+      </div>
+
+      <div class="grid" style="margin-top: 14px;">
         <label>
           Page format
           <select id="pageMode">
@@ -427,9 +445,13 @@
         </label>
 
         <label>
-          Maximum rows of direct reports
-          <input id="maxRowsPerManager" type="number" value="3">
-          <span class="hint">Wraps direct reports into rows so charts stay contained.</span>
+          Header height
+          <input id="headerHeight" type="number" value="135">
+        </label>
+
+        <label>
+          Minimum scale warning
+          <input id="minScaleWarning" type="number" step="0.05" value="0.55">
         </label>
       </div>
 
@@ -440,9 +462,9 @@
       </div>
 
       <p class="hint">
-        Expected hierarchy:
-        <code>Employee ID</code> links to each row's <code>Manager ID</code>.
-        Top person has a blank Manager ID.
+        Layout rule:
+        managers/supervisors stay in a clear tidy tree, while only leaf workers are wrapped into rows.
+        This keeps wiring simple and avoids crossed connector paths.
       </p>
 
       <p id="errorBox" class="error"></p>
@@ -616,6 +638,8 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
           managerId: cleanText(row[managerCol]),
           row,
           children: [],
+          managerRow: [],
+          leafRows: [],
           relX: 0,
           relY: 0,
           subtreeWidth: 0,
@@ -624,7 +648,6 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
           boxY: 0,
           centerX: 0,
           centerY: 0,
-          rows: [],
           isVirtual: false
         });
       });
@@ -656,7 +679,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       const mode = el("pageMode").value || "landscape";
       const preset = PAGE_PRESETS[mode] || PAGE_PRESETS.landscape;
       const margin = Number(el("pageMargin").value) || 34;
-      const headerHeight = 145;
+      const headerHeight = Number(el("headerHeight").value) || 135;
 
       return {
         mode,
@@ -670,142 +693,149 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       };
     }
 
-    function packChildrenIntoRows(children, maxRowWidth, gap, maxRowsPerManager) {
-      if (!children.length) {
-        return [];
-      }
-
-      const maxRows = Math.max(1, Number(maxRowsPerManager) || 3);
-      let bestRows = null;
-      let bestScore = Infinity;
-
-      for (let rowCount = 1; rowCount <= Math.min(maxRows, children.length); rowCount++) {
-        const rows = Array.from({ length: rowCount }, () => ({
-          items: [],
-          width: 0,
-          height: 0
-        }));
-
-        const sortedChildren = [...children].sort((a, b) => b.subtreeWidth - a.subtreeWidth);
-
-        sortedChildren.forEach(child => {
-          rows.sort((a, b) => a.width - b.width);
-          const row = rows[0];
-          row.items.push(child);
-          row.width += child.subtreeWidth + (row.items.length > 1 ? gap : 0);
-          row.height = Math.max(row.height, child.subtreeHeight);
-        });
-
-        rows.forEach(row => {
-          row.items.sort((a, b) => a.name.localeCompare(b.name));
-          row.width = 0;
-          row.height = 0;
-
-          row.items.forEach((child, index) => {
-            row.width += child.subtreeWidth + (index > 0 ? gap : 0);
-            row.height = Math.max(row.height, child.subtreeHeight);
-          });
-        });
-
-        const widest = Math.max(...rows.map(row => row.width));
-        const totalHeight = rows.reduce((sum, row) => sum + row.height, 0);
-        const overflow = Math.max(0, widest - maxRowWidth);
-        const balance = Math.max(...rows.map(row => row.width)) - Math.min(...rows.map(row => row.width));
-        const score = overflow * 1000 + widest * 1.5 + totalHeight * 0.7 + balance * 0.25;
-
-        if (score < bestScore) {
-          bestScore = score;
-          bestRows = rows;
-        }
-      }
-
-      if (!bestRows) {
-        bestRows = [];
-        let currentRow = { items: [], width: 0, height: 0 };
-
-        children.forEach(child => {
-          const nextWidth = currentRow.items.length
-            ? currentRow.width + gap + child.subtreeWidth
-            : child.subtreeWidth;
-
-          if (currentRow.items.length && nextWidth > maxRowWidth) {
-            bestRows.push(currentRow);
-            currentRow = { items: [child], width: child.subtreeWidth, height: child.subtreeHeight };
-          } else {
-            currentRow.items.push(child);
-            currentRow.width = nextWidth;
-            currentRow.height = Math.max(currentRow.height, child.subtreeHeight);
-          }
-        });
-
-        if (currentRow.items.length) {
-          bestRows.push(currentRow);
-        }
-      }
-
-      bestRows.forEach(row => {
-        row.width = 0;
-        row.height = 0;
-
-        row.items.forEach((child, index) => {
-          row.width += child.subtreeWidth + (index > 0 ? gap : 0);
-          row.height = Math.max(row.height, child.subtreeHeight);
-        });
-      });
-
-      return bestRows;
+    function isLeaf(node) {
+      return !node.children || node.children.length === 0;
     }
 
-    function computeSubtreeLayout(node, options) {
-      const ownBoxW = node.isVirtual ? 0 : options.boxW;
-      const ownBoxH = node.isVirtual ? 0 : options.boxH;
+    function splitChildren(node) {
+      const managerChildren = [];
+      const leafChildren = [];
+
+      node.children.forEach(child => {
+        if (isLeaf(child)) {
+          leafChildren.push(child);
+        } else {
+          managerChildren.push(child);
+        }
+      });
+
+      return {
+        managerChildren,
+        leafChildren
+      };
+    }
+
+    function packLeavesIntoRows(leaves, maxWidth, boxW, gap) {
+      const rows = [];
+
+      if (!leaves.length) {
+        return rows;
+      }
+
+      let current = {
+        items: [],
+        width: 0
+      };
+
+      leaves.forEach(leaf => {
+        const nextWidth = current.items.length
+          ? current.width + gap + boxW
+          : boxW;
+
+        if (current.items.length && nextWidth > maxWidth) {
+          rows.push(current);
+          current = {
+            items: [leaf],
+            width: boxW
+          };
+        } else {
+          current.items.push(leaf);
+          current.width = nextWidth;
+        }
+      });
+
+      if (current.items.length) {
+        rows.push(current);
+      }
+
+      return rows;
+    }
+
+    function computeReadableLayout(node, options) {
+      const ownW = node.isVirtual ? 0 : options.boxW;
+      const ownH = node.isVirtual ? 0 : options.boxH;
 
       if (!node.children.length) {
-        node.rows = [];
-        node.subtreeWidth = ownBoxW;
-        node.subtreeHeight = ownBoxH;
+        node.subtreeWidth = ownW;
+        node.subtreeHeight = ownH;
+        node.managerRow = [];
+        node.leafRows = [];
         return;
       }
 
-      node.children.forEach(child => computeSubtreeLayout(child, options));
+      const { managerChildren, leafChildren } = splitChildren(node);
 
-      const rows = packChildrenIntoRows(
-        node.children,
-        options.maxChildrenRowWidth,
-        options.siblingGap,
-        options.maxRowsPerManager
-      );
+      managerChildren.forEach(child => computeReadableLayout(child, options));
+      leafChildren.forEach(child => computeReadableLayout(child, options));
 
-      const childBlockWidth = rows.reduce((max, row) => Math.max(max, row.width), 0);
-      const childBlockHeight = rows.reduce((sum, row, index) => {
-        return sum + row.height + (index > 0 ? options.rowGap : 0);
+      const managerRowWidth = managerChildren.reduce((sum, child, index) => {
+        return sum + child.subtreeWidth + (index > 0 ? options.managerGap : 0);
       }, 0);
 
-      node.subtreeWidth = Math.max(ownBoxW, childBlockWidth);
+      const leafRows = packLeavesIntoRows(
+        leafChildren,
+        options.maxLeafRowWidth,
+        options.boxW,
+        options.leafGap
+      );
 
-      if (node.isVirtual) {
-        node.subtreeHeight = childBlockHeight;
-      } else {
-        node.subtreeHeight = ownBoxH + options.generationGap + childBlockHeight;
+      const leafBlockWidth = leafRows.reduce((max, row) => {
+        return Math.max(max, row.width);
+      }, 0);
+
+      const leafBlockHeight = leafRows.reduce((sum, row, index) => {
+        return sum + options.boxH + (index > 0 ? options.leafRowGap : 0);
+      }, 0);
+
+      const managerBlockHeight = managerChildren.length
+        ? Math.max(...managerChildren.map(child => child.subtreeHeight))
+        : 0;
+
+      let childBlockHeight = 0;
+
+      if (managerChildren.length) {
+        childBlockHeight += managerBlockHeight;
       }
 
-      let currentY = node.isVirtual ? 0 : ownBoxH + options.generationGap;
+      if (leafRows.length) {
+        childBlockHeight += (managerChildren.length ? options.leafSectionGap : 0) + leafBlockHeight;
+      }
 
-      rows.forEach(row => {
-        let currentX = (node.subtreeWidth - row.width) / 2;
+      const childBlockWidth = Math.max(managerRowWidth, leafBlockWidth);
 
-        row.relY = currentY;
+      node.subtreeWidth = Math.max(ownW, childBlockWidth);
+      node.subtreeHeight = node.isVirtual
+        ? childBlockHeight
+        : ownH + options.generationGap + childBlockHeight;
 
-        row.items.forEach(child => {
-          child.relX = currentX;
-          child.relY = currentY;
-          currentX += child.subtreeWidth + options.siblingGap;
-        });
+      node.managerRow = managerChildren;
+      node.leafRows = leafRows;
 
-        currentY += row.height + options.rowGap;
+      let y = node.isVirtual ? 0 : ownH + options.generationGap;
+
+      let x = (node.subtreeWidth - managerRowWidth) / 2;
+
+      managerChildren.forEach(child => {
+        child.relX = x;
+        child.relY = y;
+        x += child.subtreeWidth + options.managerGap;
       });
 
-      node.rows = rows;
+      if (managerChildren.length) {
+        y += managerBlockHeight + options.leafSectionGap;
+      }
+
+      leafRows.forEach(row => {
+        x = (node.subtreeWidth - row.width) / 2;
+
+        row.items.forEach(child => {
+          child.relX = x;
+          child.relY = y;
+          x += options.boxW + options.leafGap;
+        });
+
+        y += options.boxH + options.leafRowGap;
+      });
     }
 
     function assignAbsolutePositions(node, originX, originY, options) {
@@ -878,137 +908,91 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       parent.appendChild(path);
     }
 
-    function clamp(value, min, max) {
-      return Math.max(min, Math.min(max, value));
+    function drawManagerConnectors(node, layer, options) {
+      if (node.isVirtual || !node.managerRow.length) {
+        return;
+      }
+
+      const parentX = node.centerX;
+      const parentBottomY = node.boxY + options.boxH;
+
+      const children = node.managerRow;
+      const childTopY = Math.min(...children.map(child => child.boxY));
+      const availableGap = childTopY - parentBottomY;
+      const busY = parentBottomY + Math.max(18, Math.min(40, availableGap / 2));
+
+      const minX = Math.min(...children.map(child => child.centerX));
+      const maxX = Math.max(...children.map(child => child.centerX));
+
+      if (children.length === 1) {
+        const child = children[0];
+
+        if (Math.abs(parentX - child.centerX) < 2) {
+          drawPath(layer, `M ${parentX} ${parentBottomY} V ${child.boxY}`);
+        } else {
+          drawPath(layer, `M ${parentX} ${parentBottomY} V ${busY} H ${child.centerX} V ${child.boxY}`);
+        }
+
+        return;
+      }
+
+      drawPath(layer, `M ${parentX} ${parentBottomY} V ${busY}`);
+      drawPath(layer, `M ${minX} ${busY} H ${maxX}`);
+
+      children.forEach(child => {
+        drawPath(layer, `M ${child.centerX} ${busY} V ${child.boxY}`);
+      });
+    }
+
+    function drawLeafConnectors(node, layer, options) {
+      if (node.isVirtual || !node.leafRows.length) {
+        return;
+      }
+
+      const parentX = node.centerX;
+      const parentBottomY = node.boxY + options.boxH;
+
+      node.leafRows.forEach(row => {
+        const children = row.items;
+        const childTopY = Math.min(...children.map(child => child.boxY));
+        const availableGap = childTopY - parentBottomY;
+        const busY = childTopY - Math.max(18, Math.min(34, availableGap / 2));
+
+        const minX = Math.min(...children.map(child => child.centerX));
+        const maxX = Math.max(...children.map(child => child.centerX));
+
+        if (children.length === 1) {
+          const child = children[0];
+
+          if (Math.abs(parentX - child.centerX) < 2) {
+            drawPath(layer, `M ${parentX} ${parentBottomY} V ${child.boxY}`);
+          } else {
+            drawPath(layer, `M ${parentX} ${parentBottomY} V ${busY} H ${child.centerX} V ${child.boxY}`);
+          }
+
+          return;
+        }
+
+        const branchX = Math.max(minX, Math.min(maxX, parentX));
+
+        if (Math.abs(parentX - branchX) < 2) {
+          drawPath(layer, `M ${parentX} ${parentBottomY} V ${busY}`);
+        } else {
+          const turnY = parentBottomY + Math.max(14, (busY - parentBottomY) / 2);
+          drawPath(layer, `M ${parentX} ${parentBottomY} V ${turnY} H ${branchX} V ${busY}`);
+        }
+
+        drawPath(layer, `M ${minX} ${busY} H ${maxX}`);
+
+        children.forEach(child => {
+          drawPath(layer, `M ${child.centerX} ${busY} V ${child.boxY}`);
+        });
+      });
     }
 
     function drawConnectors(node, layer, options) {
-      if (node.isVirtual || !node.children.length) {
-        return;
-      }
-
-      const parentBottomX = node.centerX;
-      const parentBottomY = node.boxY + options.boxH;
-
-      const rowRoutes = node.rows.map(row => {
-        const children = row.items.map(child => ({
-          child,
-          x: child.centerX,
-          topY: child.boxY
-        }));
-
-        const minChildX = Math.min(...children.map(item => item.x));
-        const maxChildX = Math.max(...children.map(item => item.x));
-        const minChildTopY = Math.min(...children.map(item => item.topY));
-
-        /*
-          Bus is always safely between parent bottom and this row's child tops.
-          It is never allowed to enter a child box.
-        */
-        const availableGap = minChildTopY - parentBottomY;
-        const busY = availableGap > 30
-          ? parentBottomY + Math.min(availableGap * 0.55, availableGap - 16)
-          : parentBottomY + availableGap / 2;
-
-        return {
-          row,
-          children,
-          minChildX,
-          maxChildX,
-          minChildTopY,
-          busY
-        };
-      });
-
-      if (!rowRoutes.length) {
-        return;
-      }
-
-      /*
-        Single child: simple elbow or straight vertical line.
-      */
-      if (node.children.length === 1) {
-        const child = node.children[0];
-        const childTopY = child.boxY;
-
-        if (Math.abs(parentBottomX - child.centerX) < 2) {
-          drawPath(
-            layer,
-            `M ${parentBottomX} ${parentBottomY}
-             V ${childTopY}`
-          );
-        } else {
-          const midY = parentBottomY + (childTopY - parentBottomY) / 2;
-
-          drawPath(
-            layer,
-            `M ${parentBottomX} ${parentBottomY}
-             V ${midY}
-             H ${child.centerX}
-             V ${childTopY}`
-          );
-        }
-
-        return;
-      }
-
-      /*
-        Multiple children:
-        Row-local routing.
-        No shared vertical trunk runs through child boxes.
-      */
-      rowRoutes.forEach(route => {
-        const branchX = clamp(
-          parentBottomX,
-          route.minChildX,
-          route.maxChildX
-        );
-
-        /*
-          Branch from parent to this row's bus.
-          If the parent is outside the row span, route over to the nearest safe branch x.
-        */
-        if (Math.abs(parentBottomX - branchX) < 2) {
-          drawPath(
-            layer,
-            `M ${parentBottomX} ${parentBottomY}
-             V ${route.busY}`
-          );
-        } else {
-          const firstTurnY = parentBottomY + Math.max(
-            12,
-            (route.busY - parentBottomY) * 0.45
-          );
-
-          drawPath(
-            layer,
-            `M ${parentBottomX} ${parentBottomY}
-             V ${firstTurnY}
-             H ${branchX}
-             V ${route.busY}`
-          );
-        }
-
-        /*
-          Horizontal row bus only spans this row's children.
-        */
-        drawPath(
-          layer,
-          `M ${route.minChildX} ${route.busY}
-           H ${route.maxChildX}`
-        );
-
-        /*
-          Drops from the bus to each child box top.
-        */
-        route.children.forEach(({ x, topY }) => {
-          drawPath(
-            layer,
-            `M ${x} ${route.busY}
-             V ${topY}`
-          );
-        });
-      });
+      drawManagerConnectors(node, layer, options);
+      drawLeafConnectors(node, layer, options);
     }
 
     function drawNode(node, layer, options) {
@@ -1043,6 +1027,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         text.setAttribute("text-anchor", "middle");
 
         const maxChars = line.cls === "name" ? 24 : 28;
+
         text.textContent = line.text.length > maxChars
           ? line.text.slice(0, maxChars - 3) + "..."
           : line.text;
@@ -1085,12 +1070,23 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       const boxW = Number(el("boxWidth").value) || 210;
       const boxH = Number(el("boxHeight").value) || 88;
-      const siblingGap = Number(el("xGap").value) || 26;
-      const generationGap = Number(el("yGap").value) || 86;
-      const rowGap = Number(el("rowGap").value) || 42;
-      const maxRowsPerManager = Number(el("maxRowsPerManager").value) || 3;
 
       const page = getPageConfig();
+
+      const options = {
+        boxW,
+        boxH,
+        managerGap: Number(el("managerGap").value) || 34,
+        generationGap: Number(el("generationGap").value) || 82,
+        leafGap: Number(el("leafGap").value) || 22,
+        leafRowGap: Number(el("leafRowGap").value) || 34,
+        leafSectionGap: Number(el("leafSectionGap").value) || 58,
+        maxLeafRowWidth: Math.min(
+          Number(el("maxLeafRowWidth").value) || page.innerWidth,
+          page.innerWidth
+        )
+      };
+
       const { nodes, roots } = buildHierarchy(rows);
 
       if (!nodes.length) {
@@ -1105,25 +1101,20 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
             name: "",
             row: {},
             children: roots,
+            managerRow: roots.filter(root => !isLeaf(root)),
+            leafRows: [],
             relX: 0,
             relY: 0,
             subtreeWidth: 0,
             subtreeHeight: 0,
-            rows: [],
+            boxX: 0,
+            boxY: 0,
+            centerX: 0,
+            centerY: 0,
             isVirtual: true
           };
 
-      const options = {
-        boxW,
-        boxH,
-        siblingGap,
-        generationGap,
-        rowGap,
-        maxRowsPerManager,
-        maxChildrenRowWidth: Math.max(300, page.innerWidth - 40)
-      };
-
-      computeSubtreeLayout(layoutRoot, options);
+      computeReadableLayout(layoutRoot, options);
       assignAbsolutePositions(layoutRoot, 0, 0, options);
 
       const rawWidth = Math.max(layoutRoot.subtreeWidth, boxW);
@@ -1174,7 +1165,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
           .line {
             stroke: #64748b;
-            stroke-width: 1.3;
+            stroke-width: 1.25;
             fill: none;
             stroke-linecap: square;
             stroke-linejoin: miter;
@@ -1211,8 +1202,8 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         image.setAttribute("href", logoDataUrl);
         image.setAttribute("x", page.margin);
         image.setAttribute("y", page.margin - 4);
-        image.setAttribute("width", 120);
-        image.setAttribute("height", 120);
+        image.setAttribute("width", 118);
+        image.setAttribute("height", 118);
         image.setAttribute("preserveAspectRatio", "xMidYMid meet");
         svg.appendChild(image);
       }
@@ -1247,10 +1238,16 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       const connectorLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
       const nodeLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
+
       chartGroup.appendChild(connectorLayer);
       chartGroup.appendChild(nodeLayer);
 
       renderTree(layoutRoot, connectorLayer, nodeLayer, options);
+
+      const minScaleWarning = Number(el("minScaleWarning").value) || 0.55;
+      const warningText = scale < minScaleWarning
+        ? `<span class="pill">Small scale: consider fewer visible fields or smaller boxes</span>`
+        : "";
 
       el("stats").innerHTML = `
         <span class="pill">${nodes.length} people</span>
@@ -1259,6 +1256,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         <span class="pill">Raw layout: ${Math.round(rawWidth)} × ${Math.round(rawHeight)}</span>
         <span class="pill">Page: ${page.pageWidth} × ${page.pageHeight}</span>
         <span class="pill">Scale: ${scale.toFixed(2)}x</span>
+        ${warningText}
       `;
 
       el("downloadSvgBtn").disabled = false;
@@ -1351,12 +1349,16 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       "areaCol",
       "boxWidth",
       "boxHeight",
-      "xGap",
-      "yGap",
-      "rowGap",
+      "managerGap",
+      "generationGap",
+      "leafGap",
+      "leafRowGap",
+      "leafSectionGap",
+      "maxLeafRowWidth",
       "pageMode",
       "pageMargin",
-      "maxRowsPerManager",
+      "headerHeight",
+      "minScaleWarning",
       "buildingSelect",
       "showName",
       "showEmployeeId",
