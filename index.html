@@ -284,13 +284,13 @@
           Export as SVG or PNG.
         </p>
       </div>
-      <div class="badge">A3 Landscape default</div>
+      <div class="badge">Page-fit layout</div>
     </section>
 
     <section class="card warning">
       <strong>Important:</strong>
       A browser-only tool cannot create native <code>.vsdx</code> files.
-      This creates clean <code>.svg</code> and <code>.png</code> org charts laid out to fit an A3 sheet.
+      This creates clean <code>.svg</code> and <code>.png</code> org charts sized to fit the page.
     </section>
 
     <section class="card">
@@ -403,7 +403,7 @@
 
         <label>
           Generation gap
-          <input id="generationGap" type="number" value="82">
+          <input id="generationGap" type="number" value="72">
         </label>
       </div>
 
@@ -415,12 +415,12 @@
 
         <label>
           Leaf row gap
-          <input id="leafRowGap" type="number" value="34">
+          <input id="leafRowGap" type="number" value="28">
         </label>
 
         <label>
           Leaf section gap
-          <input id="leafSectionGap" type="number" value="58">
+          <input id="leafSectionGap" type="number" value="40">
         </label>
 
         <label>
@@ -434,19 +434,19 @@
         <label>
           Page format
           <select id="pageMode">
-            <option value="landscape" selected>A3 Landscape</option>
-            <option value="portrait">A3 Portrait</option>
+            <option value="landscape" selected>Landscape</option>
+            <option value="portrait">Portrait</option>
           </select>
         </label>
 
         <label>
           Page margin
-          <input id="pageMargin" type="number" value="34">
+          <input id="pageMargin" type="number" value="28">
         </label>
 
         <label>
           Header height
-          <input id="headerHeight" type="number" value="135">
+          <input id="headerHeight" type="number" value="92">
         </label>
 
         <label>
@@ -494,8 +494,8 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     let logoDataUrl = "";
 
     const PAGE_PRESETS = {
-      landscape: { width: 1587, height: 1123, label: "A3 Landscape" },
-      portrait: { width: 1123, height: 1587, label: "A3 Portrait" }
+      landscape: { width: 1587, height: 1123, label: "Landscape" },
+      portrait: { width: 1123, height: 1587, label: "Portrait" }
     };
 
     const el = id => document.getElementById(id);
@@ -678,8 +678,8 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     function getPageConfig() {
       const mode = el("pageMode").value || "landscape";
       const preset = PAGE_PRESETS[mode] || PAGE_PRESETS.landscape;
-      const margin = Number(el("pageMargin").value) || 34;
-      const headerHeight = Number(el("headerHeight").value) || 135;
+      const margin = Number(el("pageMargin").value) || 28;
+      const headerHeight = Number(el("headerHeight").value) || 92;
 
       return {
         mode,
@@ -779,9 +779,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         options.leafGap
       );
 
-      const leafBlockWidth = leafRows.reduce((max, row) => {
-        return Math.max(max, row.width);
-      }, 0);
+      const leafBlockWidth = leafRows.reduce((max, row) => Math.max(max, row.width), 0);
 
       const leafBlockHeight = leafRows.reduce((sum, row, index) => {
         return sum + options.boxH + (index > 0 ? options.leafRowGap : 0);
@@ -812,7 +810,6 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       node.leafRows = leafRows;
 
       let y = node.isVirtual ? 0 : ownH + options.generationGap;
-
       let x = (node.subtreeWidth - managerRowWidth) / 2;
 
       managerChildren.forEach(child => {
@@ -822,7 +819,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       });
 
       if (managerChildren.length) {
-        y += managerBlockHeight + options.leafSectionGap;
+        y += managerBlockHeight + (leafRows.length ? options.leafSectionGap : 0);
       }
 
       leafRows.forEach(row => {
@@ -915,11 +912,10 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       const parentX = node.centerX;
       const parentBottomY = node.boxY + options.boxH;
-
       const children = node.managerRow;
       const childTopY = Math.min(...children.map(child => child.boxY));
       const availableGap = childTopY - parentBottomY;
-      const busY = parentBottomY + Math.max(18, Math.min(40, availableGap / 2));
+      const busY = parentBottomY + Math.max(16, Math.min(34, availableGap / 2));
 
       const minX = Math.min(...children.map(child => child.centerX));
       const maxX = Math.max(...children.map(child => child.centerX));
@@ -956,7 +952,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         const children = row.items;
         const childTopY = Math.min(...children.map(child => child.boxY));
         const availableGap = childTopY - parentBottomY;
-        const busY = childTopY - Math.max(18, Math.min(34, availableGap / 2));
+        const busY = childTopY - Math.max(16, Math.min(28, availableGap / 2));
 
         const minX = Math.min(...children.map(child => child.centerX));
         const maxX = Math.max(...children.map(child => child.centerX));
@@ -978,7 +974,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         if (Math.abs(parentX - branchX) < 2) {
           drawPath(layer, `M ${parentX} ${parentBottomY} V ${busY}`);
         } else {
-          const turnY = parentBottomY + Math.max(14, (busY - parentBottomY) / 2);
+          const turnY = parentBottomY + Math.max(12, (busY - parentBottomY) / 2);
           drawPath(layer, `M ${parentX} ${parentBottomY} V ${turnY} H ${branchX} V ${busY}`);
         }
 
@@ -1070,17 +1066,16 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       const boxW = Number(el("boxWidth").value) || 210;
       const boxH = Number(el("boxHeight").value) || 88;
-
       const page = getPageConfig();
 
       const options = {
         boxW,
         boxH,
         managerGap: Number(el("managerGap").value) || 34,
-        generationGap: Number(el("generationGap").value) || 82,
+        generationGap: Number(el("generationGap").value) || 72,
         leafGap: Number(el("leafGap").value) || 22,
-        leafRowGap: Number(el("leafRowGap").value) || 34,
-        leafSectionGap: Number(el("leafSectionGap").value) || 58,
+        leafRowGap: Number(el("leafRowGap").value) || 28,
+        leafSectionGap: Number(el("leafSectionGap").value) || 40,
         maxLeafRowWidth: Math.min(
           Number(el("maxLeafRowWidth").value) || page.innerWidth,
           page.innerWidth
@@ -1101,7 +1096,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
             name: "",
             row: {},
             children: roots,
-            managerRow: roots.filter(root => !isLeaf(root)),
+            managerRow: [],
             leafRows: [],
             relX: 0,
             relY: 0,
@@ -1130,7 +1125,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       const scaledHeight = rawHeight * scale;
 
       const contentX = page.margin + (page.innerWidth - scaledWidth) / 2;
-      const contentY = page.margin + page.headerHeight + (page.innerHeight - scaledHeight) / 2;
+      const contentY = page.margin + page.headerHeight + 6;
 
       const svg = el("chartSvg");
       svg.setAttribute("width", page.pageWidth);
@@ -1180,11 +1175,6 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
             font: 14px Arial;
             fill: #637083;
           }
-
-          .page-note {
-            font: 12px Arial;
-            fill: #637083;
-          }
         </style>
       `;
       svg.appendChild(defs);
@@ -1201,9 +1191,9 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         const image = document.createElementNS("http://www.w3.org/2000/svg", "image");
         image.setAttribute("href", logoDataUrl);
         image.setAttribute("x", page.margin);
-        image.setAttribute("y", page.margin - 4);
-        image.setAttribute("width", 118);
-        image.setAttribute("height", 118);
+        image.setAttribute("y", page.margin - 2);
+        image.setAttribute("width", 90);
+        image.setAttribute("height", 90);
         image.setAttribute("preserveAspectRatio", "xMidYMid meet");
         svg.appendChild(image);
       }
@@ -1211,7 +1201,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       const title = document.createElementNS("http://www.w3.org/2000/svg", "text");
       title.setAttribute("class", "chart-title");
       title.setAttribute("x", page.pageWidth / 2);
-      title.setAttribute("y", page.margin + 42);
+      title.setAttribute("y", page.margin + 30);
       title.setAttribute("text-anchor", "middle");
       title.textContent = selectedBuilding;
       svg.appendChild(title);
@@ -1219,18 +1209,10 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       const subtitle = document.createElementNS("http://www.w3.org/2000/svg", "text");
       subtitle.setAttribute("class", "chart-subtitle");
       subtitle.setAttribute("x", page.pageWidth / 2);
-      subtitle.setAttribute("y", page.margin + 68);
+      subtitle.setAttribute("y", page.margin + 54);
       subtitle.setAttribute("text-anchor", "middle");
-      subtitle.textContent = `${nodes.length} people • ${page.label}`;
+      subtitle.textContent = `${nodes.length} people`;
       svg.appendChild(subtitle);
-
-      const pageNote = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      pageNote.setAttribute("class", "page-note");
-      pageNote.setAttribute("x", page.pageWidth - page.margin);
-      pageNote.setAttribute("y", page.pageHeight - page.margin / 2);
-      pageNote.setAttribute("text-anchor", "end");
-      pageNote.textContent = `Generated for A3 • scale ${scale.toFixed(2)}x`;
-      svg.appendChild(pageNote);
 
       const chartGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
       chartGroup.setAttribute("transform", `translate(${contentX}, ${contentY}) scale(${scale})`);
@@ -1238,7 +1220,6 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       const connectorLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
       const nodeLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
-
       chartGroup.appendChild(connectorLayer);
       chartGroup.appendChild(nodeLayer);
 
@@ -1297,7 +1278,6 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         canvas.height = svg.height.baseVal.value;
 
         const context = canvas.getContext("2d");
-
         context.fillStyle = "#ffffff";
         context.fillRect(0, 0, canvas.width, canvas.height);
         context.drawImage(image, 0, 0);
@@ -1321,7 +1301,6 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       }
 
       currentFileStem = safeName(file.name.replace(/\.csv$/i, ""));
-
       const text = await file.text();
 
       try {
