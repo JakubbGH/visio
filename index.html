@@ -403,14 +403,14 @@
 
         <label>
           Generation gap
-          <input id="yGap" type="number" value="80">
+          <input id="yGap" type="number" value="86">
         </label>
       </div>
 
       <div class="grid" style="margin-top: 14px;">
         <label>
           Child row gap
-          <input id="rowGap" type="number" value="34">
+          <input id="rowGap" type="number" value="42">
         </label>
 
         <label>
@@ -874,37 +874,12 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
       path.setAttribute("class", "line");
       path.setAttribute("d", d);
+      path.setAttribute("vector-effect", "non-scaling-stroke");
       parent.appendChild(path);
     }
 
     function clamp(value, min, max) {
       return Math.max(min, Math.min(max, value));
-    }
-
-    function getConnectorBusY(parent, row, options) {
-      const parentBottom = parent.boxY + options.boxH;
-      const childTop = parent.originY + row.relY;
-      const availableGap = childTop - parentBottom;
-
-      if (availableGap <= 18) {
-        return parentBottom + availableGap / 2;
-      }
-
-      const preferredOffset = Math.round(availableGap * 0.45);
-
-      return clamp(
-        parentBottom + preferredOffset,
-        parentBottom + 14,
-        childTop - 14
-      );
-    }
-
-    function getRowChildCenters(row) {
-      return row.items.map(child => ({
-        child,
-        x: child.centerX,
-        y: child.boxY
-      }));
     }
 
     function drawConnectors(node, layer, options) {
@@ -916,16 +891,31 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       const parentBottomY = node.boxY + options.boxH;
 
       const rowRoutes = node.rows.map(row => {
-        const childCenters = getRowChildCenters(row);
-        const minX = Math.min(...childCenters.map(item => item.x));
-        const maxX = Math.max(...childCenters.map(item => item.x));
-        const busY = getConnectorBusY(node, row, options);
+        const children = row.items.map(child => ({
+          child,
+          x: child.centerX,
+          topY: child.boxY
+        }));
+
+        const minChildX = Math.min(...children.map(item => item.x));
+        const maxChildX = Math.max(...children.map(item => item.x));
+        const minChildTopY = Math.min(...children.map(item => item.topY));
+
+        /*
+          Bus is always safely between parent bottom and this row's child tops.
+          It is never allowed to enter a child box.
+        */
+        const availableGap = minChildTopY - parentBottomY;
+        const busY = availableGap > 30
+          ? parentBottomY + Math.min(availableGap * 0.55, availableGap - 16)
+          : parentBottomY + availableGap / 2;
 
         return {
           row,
-          childCenters,
-          minX,
-          maxX,
+          children,
+          minChildX,
+          maxChildX,
+          minChildTopY,
           busY
         };
       });
@@ -934,6 +924,9 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         return;
       }
 
+      /*
+        Single child: simple elbow or straight vertical line.
+      */
       if (node.children.length === 1) {
         const child = node.children[0];
         const childTopY = child.boxY;
@@ -945,16 +938,12 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
              V ${childTopY}`
           );
         } else {
-          const busY = clamp(
-            parentBottomY + (childTopY - parentBottomY) / 2,
-            parentBottomY + 14,
-            childTopY - 14
-          );
+          const midY = parentBottomY + (childTopY - parentBottomY) / 2;
 
           drawPath(
             layer,
             `M ${parentBottomX} ${parentBottomY}
-             V ${busY}
+             V ${midY}
              H ${child.centerX}
              V ${childTopY}`
           );
@@ -963,29 +952,60 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         return;
       }
 
-      const lastBusY = Math.max(...rowRoutes.map(route => route.busY));
-
-      drawPath(
-        layer,
-        `M ${parentBottomX} ${parentBottomY}
-         V ${lastBusY}`
-      );
-
+      /*
+        Multiple children:
+        Row-local routing.
+        No shared vertical trunk runs through child boxes.
+      */
       rowRoutes.forEach(route => {
-        const busStartX = Math.min(route.minX, parentBottomX);
-        const busEndX = Math.max(route.maxX, parentBottomX);
-
-        drawPath(
-          layer,
-          `M ${busStartX} ${route.busY}
-           H ${busEndX}`
+        const branchX = clamp(
+          parentBottomX,
+          route.minChildX,
+          route.maxChildX
         );
 
-        route.childCenters.forEach(({ child, x, y }) => {
+        /*
+          Branch from parent to this row's bus.
+          If the parent is outside the row span, route over to the nearest safe branch x.
+        */
+        if (Math.abs(parentBottomX - branchX) < 2) {
+          drawPath(
+            layer,
+            `M ${parentBottomX} ${parentBottomY}
+             V ${route.busY}`
+          );
+        } else {
+          const firstTurnY = parentBottomY + Math.max(
+            12,
+            (route.busY - parentBottomY) * 0.45
+          );
+
+          drawPath(
+            layer,
+            `M ${parentBottomX} ${parentBottomY}
+             V ${firstTurnY}
+             H ${branchX}
+             V ${route.busY}`
+          );
+        }
+
+        /*
+          Horizontal row bus only spans this row's children.
+        */
+        drawPath(
+          layer,
+          `M ${route.minChildX} ${route.busY}
+           H ${route.maxChildX}`
+        );
+
+        /*
+          Drops from the bus to each child box top.
+        */
+        route.children.forEach(({ x, topY }) => {
           drawPath(
             layer,
             `M ${x} ${route.busY}
-             V ${y}`
+             V ${topY}`
           );
         });
       });
@@ -1066,8 +1086,8 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       const boxW = Number(el("boxWidth").value) || 210;
       const boxH = Number(el("boxHeight").value) || 88;
       const siblingGap = Number(el("xGap").value) || 26;
-      const generationGap = Number(el("yGap").value) || 80;
-      const rowGap = Number(el("rowGap").value) || 34;
+      const generationGap = Number(el("yGap").value) || 86;
+      const rowGap = Number(el("rowGap").value) || 42;
       const maxRowsPerManager = Number(el("maxRowsPerManager").value) || 3;
 
       const page = getPageConfig();
@@ -1157,7 +1177,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
             stroke-width: 1.3;
             fill: none;
             stroke-linecap: square;
-            stroke-linejoin: round;
+            stroke-linejoin: miter;
           }
 
           .chart-title {
