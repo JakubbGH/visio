@@ -280,11 +280,10 @@
         <p class="eyebrow">Browser-only tool</p>
         <h1>CSV Org Chart Builder</h1>
         <p class="lead">
-          Upload your Visio-ready CSV and generate readable building-based org charts directly in the browser.
-          Export as SVG or PNG.
+          Upload your CSV, generate a readable org chart, adjust the layout visually, then export as SVG or PNG.
         </p>
       </div>
-      <div class="badge">Page-fit layout</div>
+      <div class="badge">Editable page-fit layout</div>
     </section>
 
     <section class="card warning">
@@ -387,6 +386,15 @@
 
       <div class="grid" style="margin-top: 18px;">
         <label>
+          Auto fit box size
+          <select id="autoFit">
+            <option value="on" selected>On</option>
+            <option value="off">Off</option>
+          </select>
+          <span class="hint">Turn off after the first pass to manually fine-tune.</span>
+        </label>
+
+        <label>
           Box width
           <input id="boxWidth" type="number" value="210">
         </label>
@@ -400,14 +408,14 @@
           Manager subtree gap
           <input id="managerGap" type="number" value="34">
         </label>
+      </div>
 
+      <div class="grid" style="margin-top: 14px;">
         <label>
           Generation gap
           <input id="generationGap" type="number" value="72">
         </label>
-      </div>
 
-      <div class="grid" style="margin-top: 14px;">
         <label>
           Leaf gap
           <input id="leafGap" type="number" value="22">
@@ -422,15 +430,15 @@
           Leaf section gap
           <input id="leafSectionGap" type="number" value="40">
         </label>
+      </div>
 
+      <div class="grid" style="margin-top: 14px;">
         <label>
           Max leaf row width
           <input id="maxLeafRowWidth" type="number" value="1450">
           <span class="hint">Only people with no reports are wrapped.</span>
         </label>
-      </div>
 
-      <div class="grid" style="margin-top: 14px;">
         <label>
           Page format
           <select id="pageMode">
@@ -448,23 +456,19 @@
           Header height
           <input id="headerHeight" type="number" value="92">
         </label>
-
-        <label>
-          Minimum scale warning
-          <input id="minScaleWarning" type="number" step="0.05" value="0.55">
-        </label>
       </div>
 
       <div class="actions">
         <button id="buildBtn" type="button">Build chart</button>
+        <button id="editModeBtn" class="secondary" type="button" disabled>Edit layout: Off</button>
+        <button id="resetLayoutBtn" class="secondary" type="button" disabled>Reset layout</button>
         <button id="downloadSvgBtn" class="secondary" type="button" disabled>Download SVG</button>
         <button id="downloadPngBtn" class="secondary" type="button" disabled>Download PNG</button>
       </div>
 
       <p class="hint">
-        Layout rule:
-        managers/supervisors stay in a clear tidy tree, while only leaf workers are wrapped into rows.
-        This keeps wiring simple and avoids crossed connector paths.
+        Edit layout mode: drag boxes to move them. Drag the green corner handle to resize a box.
+        Connectors redraw automatically.
       </p>
 
       <p id="errorBox" class="error"></p>
@@ -492,6 +496,13 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     let currentFileStem = "org_chart";
     const LOGO_PATH = "mehlogo.png";
     let logoDataUrl = "";
+
+    let editMode = false;
+    let manualLayout = new Map();
+    let lastLayoutSignature = "";
+    let activeDrag = null;
+    let activeResize = null;
+    let isRedrawingFromPointer = false;
 
     const PAGE_PRESETS = {
       landscape: { width: 1587, height: 1123, label: "Landscape" },
@@ -646,6 +657,8 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
           subtreeHeight: 0,
           boxX: 0,
           boxY: 0,
+          boxW: 0,
+          boxH: 0,
           centerX: 0,
           centerY: 0,
           isVirtual: false
@@ -840,10 +853,12 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       node.originY = originY;
 
       if (!node.isVirtual) {
+        node.boxW = options.boxW;
+        node.boxH = options.boxH;
         node.boxX = originX + (node.subtreeWidth - options.boxW) / 2;
         node.boxY = originY;
-        node.centerX = node.boxX + options.boxW / 2;
-        node.centerY = node.boxY + options.boxH / 2;
+        node.centerX = node.boxX + node.boxW / 2;
+        node.centerY = node.boxY + node.boxH / 2;
       }
 
       node.children.forEach(child => {
@@ -905,13 +920,21 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       parent.appendChild(path);
     }
 
+    function getNodeBoxW(node, options) {
+      return node.boxW || options.boxW;
+    }
+
+    function getNodeBoxH(node, options) {
+      return node.boxH || options.boxH;
+    }
+
     function drawManagerConnectors(node, layer, options) {
       if (node.isVirtual || !node.managerRow.length) {
         return;
       }
 
       const parentX = node.centerX;
-      const parentBottomY = node.boxY + options.boxH;
+      const parentBottomY = node.boxY + getNodeBoxH(node, options);
       const children = node.managerRow;
       const childTopY = Math.min(...children.map(child => child.boxY));
       const availableGap = childTopY - parentBottomY;
@@ -946,7 +969,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       }
 
       const parentX = node.centerX;
-      const parentBottomY = node.boxY + options.boxH;
+      const parentBottomY = node.boxY + getNodeBoxH(node, options);
 
       node.leafRows.forEach(row => {
         const children = row.items;
@@ -996,40 +1019,79 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         return;
       }
 
+      const boxW = getNodeBoxW(node, options);
+      const boxH = getNodeBoxH(node, options);
+
       const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      group.setAttribute("data-node-id", node.id);
+      group.style.cursor = editMode ? "move" : "default";
 
       const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
       rect.setAttribute("class", "box");
       rect.setAttribute("x", node.boxX);
       rect.setAttribute("y", node.boxY);
-      rect.setAttribute("width", options.boxW);
-      rect.setAttribute("height", options.boxH);
+      rect.setAttribute("width", boxW);
+      rect.setAttribute("height", boxH);
       rect.setAttribute("rx", 10);
       group.appendChild(rect);
 
       const textLines = getVisibleChartFields(node);
-      const topPadding = 18;
-      const bottomPadding = 12;
-      const usableHeight = Math.max(10, options.boxH - topPadding - bottomPadding);
-      const step = textLines.length > 1
-        ? Math.min(14, usableHeight / (textLines.length - 1))
-        : 0;
+      const lineHeight = 14;
+      const nameLineHeight = 15;
 
-      textLines.forEach((line, i) => {
+      const totalTextHeight = textLines.reduce((sum, line) => {
+        return sum + (line.cls === "name" ? nameLineHeight : lineHeight);
+      }, 0);
+
+      let y = node.boxY + (boxH - totalTextHeight) / 2 + 11;
+
+      textLines.forEach(line => {
         const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        text.setAttribute("class", line.cls);
-        text.setAttribute("x", node.centerX);
-        text.setAttribute("y", node.boxY + topPadding + i * step);
-        text.setAttribute("text-anchor", "middle");
 
-        const maxChars = line.cls === "name" ? 24 : 28;
+        text.setAttribute("class", line.cls);
+        text.setAttribute("x", node.boxX + boxW / 2);
+        text.setAttribute("y", y);
+        text.setAttribute("text-anchor", "middle");
+        text.setAttribute("pointer-events", "none");
+
+        const maxChars = Math.max(
+          14,
+          Math.floor(boxW / (line.cls === "name" ? 8.3 : 7.2))
+        );
 
         text.textContent = line.text.length > maxChars
           ? line.text.slice(0, maxChars - 3) + "..."
           : line.text;
 
         group.appendChild(text);
+
+        y += line.cls === "name" ? nameLineHeight : lineHeight;
       });
+
+      if (editMode) {
+        const handleSize = 12;
+        const handle = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+
+        handle.setAttribute("class", "resize-handle");
+        handle.setAttribute("x", node.boxX + boxW - handleSize);
+        handle.setAttribute("y", node.boxY + boxH - handleSize);
+        handle.setAttribute("width", handleSize);
+        handle.setAttribute("height", handleSize);
+        handle.setAttribute("rx", 2);
+        handle.style.cursor = "nwse-resize";
+
+        handle.addEventListener("pointerdown", event => {
+          event.stopPropagation();
+          startResizeNode(event, node, options);
+        });
+
+        group.appendChild(handle);
+
+        group.addEventListener("pointerdown", event => {
+          event.stopPropagation();
+          startDragNode(event, node, options);
+        });
+      }
 
       layer.appendChild(group);
     }
@@ -1045,6 +1107,302 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       if (!node.isVirtual) {
         drawNode(node, nodeLayer, options);
+      }
+    }
+
+    function countVisibleFields() {
+      return [
+        "showName",
+        "showEmployeeId",
+        "showJobRole",
+        "showTypeOfWork",
+        "showArea",
+        "showBuilding",
+        "showManagerId"
+      ].filter(id => el(id).checked).length;
+    }
+
+    function getMaxTextLength(nodes) {
+      let maxLength = 0;
+
+      nodes.forEach(node => {
+        getVisibleChartFields(node).forEach(field => {
+          maxLength = Math.max(maxLength, field.text.length);
+        });
+      });
+
+      return maxLength;
+    }
+
+    function estimateDepth(node) {
+      if (!node.children.length) {
+        return 1;
+      }
+
+      return 1 + Math.max(...node.children.map(estimateDepth));
+    }
+
+    function getTreeDepth(roots) {
+      if (!roots.length) {
+        return 1;
+      }
+
+      return Math.max(...roots.map(estimateDepth));
+    }
+
+    function getLeafCount(nodes) {
+      return nodes.filter(node => !node.children.length).length;
+    }
+
+    function getManagerCount(nodes) {
+      return nodes.filter(node => node.children.length).length;
+    }
+
+    function getAutoFitOptions(nodes, roots, page) {
+      const visibleFields = Math.max(1, countVisibleFields());
+      const maxTextLength = getMaxTextLength(nodes);
+      const depth = getTreeDepth(roots);
+      const leafCount = getLeafCount(nodes);
+      const managerCount = getManagerCount(nodes);
+
+      let boxW = 210;
+      let boxH = 58 + visibleFields * 10;
+
+      if (maxTextLength > 28) {
+        boxW = 230;
+      }
+
+      if (maxTextLength > 36) {
+        boxW = 250;
+      }
+
+      if (nodes.length > 40) {
+        boxW -= 15;
+        boxH -= 4;
+      }
+
+      if (nodes.length > 80) {
+        boxW -= 20;
+        boxH -= 5;
+      }
+
+      if (nodes.length > 130) {
+        boxW -= 15;
+        boxH -= 4;
+      }
+
+      boxW = Math.max(150, Math.min(260, boxW));
+      boxH = Math.max(56, Math.min(112, boxH));
+
+      let managerGap = Math.round(boxW * 0.16);
+      let generationGap = Math.round(boxH * 0.72);
+      let leafGap = Math.round(boxW * 0.10);
+      let leafRowGap = Math.round(boxH * 0.30);
+      let leafSectionGap = Math.round(boxH * 0.42);
+
+      if (managerCount > 15) {
+        managerGap = Math.max(18, managerGap - 8);
+      }
+
+      if (leafCount > 50) {
+        leafGap = Math.max(10, leafGap - 8);
+        leafRowGap = Math.max(16, leafRowGap - 6);
+      }
+
+      if (depth > 5) {
+        generationGap = Math.max(38, generationGap - 10);
+        leafSectionGap = Math.max(22, leafSectionGap - 8);
+      }
+
+      const maxLeafRowWidth = Math.max(500, page.innerWidth * 0.96);
+
+      return {
+        boxW,
+        boxH,
+        managerGap,
+        generationGap,
+        leafGap,
+        leafRowGap,
+        leafSectionGap,
+        maxLeafRowWidth
+      };
+    }
+
+    function maybeApplyAutoFit(nodes, roots, page) {
+      if (el("autoFit").value !== "on") {
+        return;
+      }
+
+      const fit = getAutoFitOptions(nodes, roots, page);
+
+      el("boxWidth").value = fit.boxW;
+      el("boxHeight").value = fit.boxH;
+      el("managerGap").value = fit.managerGap;
+      el("generationGap").value = fit.generationGap;
+      el("leafGap").value = fit.leafGap;
+      el("leafRowGap").value = fit.leafRowGap;
+      el("leafSectionGap").value = fit.leafSectionGap;
+      el("maxLeafRowWidth").value = Math.round(fit.maxLeafRowWidth);
+    }
+
+    function getLayoutSignature() {
+      return [
+        el("buildingSelect").value,
+        el("boxWidth").value,
+        el("boxHeight").value,
+        el("managerGap").value,
+        el("generationGap").value,
+        el("leafGap").value,
+        el("leafRowGap").value,
+        el("leafSectionGap").value,
+        el("maxLeafRowWidth").value,
+        el("pageMode").value,
+        el("pageMargin").value,
+        el("headerHeight").value
+      ].join("|");
+    }
+
+    function applyManualLayout(nodes, options) {
+      nodes.forEach(node => {
+        const saved = manualLayout.get(node.id);
+
+        if (!saved) {
+          return;
+        }
+
+        if (Number.isFinite(saved.boxX)) node.boxX = saved.boxX;
+        if (Number.isFinite(saved.boxY)) node.boxY = saved.boxY;
+        if (Number.isFinite(saved.boxW)) node.boxW = saved.boxW;
+        if (Number.isFinite(saved.boxH)) node.boxH = saved.boxH;
+
+        node.centerX = node.boxX + getNodeBoxW(node, options) / 2;
+        node.centerY = node.boxY + getNodeBoxH(node, options) / 2;
+      });
+    }
+
+    function getChartLocalPoint(event, svg, chartGroup) {
+      const point = svg.createSVGPoint();
+      point.x = event.clientX;
+      point.y = event.clientY;
+
+      const ctm = chartGroup.getScreenCTM();
+
+      if (!ctm) {
+        return { x: 0, y: 0 };
+      }
+
+      return point.matrixTransform(ctm.inverse());
+    }
+
+    function startDragNode(event, node, options) {
+      if (!editMode) {
+        return;
+      }
+
+      const svg = el("chartSvg");
+      const chartGroup = document.getElementById("chartGroup");
+
+      if (!chartGroup) {
+        return;
+      }
+
+      const start = getChartLocalPoint(event, svg, chartGroup);
+
+      activeDrag = {
+        nodeId: node.id,
+        startX: start.x,
+        startY: start.y,
+        originalBoxX: node.boxX,
+        originalBoxY: node.boxY
+      };
+
+      try {
+        svg.setPointerCapture(event.pointerId);
+      } catch (error) {
+        // ignore
+      }
+    }
+
+    function startResizeNode(event, node, options) {
+      if (!editMode) {
+        return;
+      }
+
+      const svg = el("chartSvg");
+      const chartGroup = document.getElementById("chartGroup");
+
+      if (!chartGroup) {
+        return;
+      }
+
+      const start = getChartLocalPoint(event, svg, chartGroup);
+
+      activeResize = {
+        nodeId: node.id,
+        startX: start.x,
+        startY: start.y,
+        originalBoxW: getNodeBoxW(node, options),
+        originalBoxH: getNodeBoxH(node, options)
+      };
+
+      try {
+        svg.setPointerCapture(event.pointerId);
+      } catch (error) {
+        // ignore
+      }
+    }
+
+    function updateActiveEdit(event) {
+      if (!editMode || (!activeDrag && !activeResize) || isRedrawingFromPointer) {
+        return;
+      }
+
+      const svg = el("chartSvg");
+      const chartGroup = document.getElementById("chartGroup");
+
+      if (!chartGroup) {
+        return;
+      }
+
+      const point = getChartLocalPoint(event, svg, chartGroup);
+      const nodeId = activeDrag ? activeDrag.nodeId : activeResize.nodeId;
+      const saved = manualLayout.get(nodeId) || {};
+
+      if (activeDrag) {
+        manualLayout.set(nodeId, {
+          ...saved,
+          boxX: activeDrag.originalBoxX + point.x - activeDrag.startX,
+          boxY: activeDrag.originalBoxY + point.y - activeDrag.startY
+        });
+      }
+
+      if (activeResize) {
+        manualLayout.set(nodeId, {
+          ...saved,
+          boxW: Math.max(90, activeResize.originalBoxW + point.x - activeResize.startX),
+          boxH: Math.max(42, activeResize.originalBoxH + point.y - activeResize.startY)
+        });
+      }
+
+      isRedrawingFromPointer = true;
+      requestAnimationFrame(() => {
+        drawChart();
+        isRedrawingFromPointer = false;
+      });
+    }
+
+    function endActiveEdit(event) {
+      if (!activeDrag && !activeResize) {
+        return;
+      }
+
+      activeDrag = null;
+      activeResize = null;
+
+      try {
+        el("chartSvg").releasePointerCapture(event.pointerId);
+      } catch (error) {
+        // ignore
       }
     }
 
@@ -1064,9 +1422,18 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         return (cleanText(row[buildingCol]) || "No Building") === selectedBuilding;
       });
 
+      const page = getPageConfig();
+      const { nodes, roots } = buildHierarchy(rows);
+
+      if (!nodes.length) {
+        errorBox.textContent = "No valid rows found for this building.";
+        return;
+      }
+
+      maybeApplyAutoFit(nodes, roots, page);
+
       const boxW = Number(el("boxWidth").value) || 210;
       const boxH = Number(el("boxHeight").value) || 88;
-      const page = getPageConfig();
 
       const options = {
         boxW,
@@ -1081,13 +1448,6 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
           page.innerWidth
         )
       };
-
-      const { nodes, roots } = buildHierarchy(rows);
-
-      if (!nodes.length) {
-        errorBox.textContent = "No valid rows found for this building.";
-        return;
-      }
 
       const layoutRoot = roots.length === 1
         ? roots[0]
@@ -1104,6 +1464,8 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
             subtreeHeight: 0,
             boxX: 0,
             boxY: 0,
+            boxW: 0,
+            boxH: 0,
             centerX: 0,
             centerY: 0,
             isVirtual: true
@@ -1111,6 +1473,15 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       computeReadableLayout(layoutRoot, options);
       assignAbsolutePositions(layoutRoot, 0, 0, options);
+
+      const signature = getLayoutSignature();
+
+      if (signature !== lastLayoutSignature) {
+        manualLayout.clear();
+        lastLayoutSignature = signature;
+      }
+
+      applyManualLayout(nodes, options);
 
       const rawWidth = Math.max(layoutRoot.subtreeWidth, boxW);
       const rawHeight = Math.max(layoutRoot.subtreeHeight, boxH);
@@ -1122,7 +1493,6 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       );
 
       const scaledWidth = rawWidth * scale;
-      const scaledHeight = rawHeight * scale;
 
       const contentX = page.margin + (page.innerWidth - scaledWidth) / 2;
       const contentY = page.margin + page.headerHeight + 6;
@@ -1164,6 +1534,12 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
             fill: none;
             stroke-linecap: square;
             stroke-linejoin: miter;
+          }
+
+          .resize-handle {
+            fill: #00843D;
+            stroke: #ffffff;
+            stroke-width: 1;
           }
 
           .chart-title {
@@ -1215,6 +1591,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       svg.appendChild(subtitle);
 
       const chartGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      chartGroup.setAttribute("id", "chartGroup");
       chartGroup.setAttribute("transform", `translate(${contentX}, ${contentY}) scale(${scale})`);
       svg.appendChild(chartGroup);
 
@@ -1225,11 +1602,6 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       renderTree(layoutRoot, connectorLayer, nodeLayer, options);
 
-      const minScaleWarning = Number(el("minScaleWarning").value) || 0.55;
-      const warningText = scale < minScaleWarning
-        ? `<span class="pill">Small scale: consider fewer visible fields or smaller boxes</span>`
-        : "";
-
       el("stats").innerHTML = `
         <span class="pill">${nodes.length} people</span>
         <span class="pill">${roots.length} top-level node(s)</span>
@@ -1237,11 +1609,13 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         <span class="pill">Raw layout: ${Math.round(rawWidth)} × ${Math.round(rawHeight)}</span>
         <span class="pill">Page: ${page.pageWidth} × ${page.pageHeight}</span>
         <span class="pill">Scale: ${scale.toFixed(2)}x</span>
-        ${warningText}
+        <span class="pill">${editMode ? "Edit mode on" : "Edit mode off"}</span>
       `;
 
       el("downloadSvgBtn").disabled = false;
       el("downloadPngBtn").disabled = false;
+      el("editModeBtn").disabled = false;
+      el("resetLayoutBtn").disabled = false;
     }
 
     function downloadSVG() {
@@ -1323,6 +1697,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     });
 
     [
+      "autoFit",
       "titleCol",
       "typeCol",
       "areaCol",
@@ -1337,7 +1712,6 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       "pageMode",
       "pageMargin",
       "headerHeight",
-      "minScaleWarning",
       "buildingSelect",
       "showName",
       "showEmployeeId",
@@ -1351,8 +1725,24 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     });
 
     el("buildBtn").addEventListener("click", drawChart);
+
+    el("editModeBtn").addEventListener("click", () => {
+      editMode = !editMode;
+      el("editModeBtn").textContent = editMode ? "Edit layout: On" : "Edit layout: Off";
+      drawChart();
+    });
+
+    el("resetLayoutBtn").addEventListener("click", () => {
+      manualLayout.clear();
+      drawChart();
+    });
+
     el("downloadSvgBtn").addEventListener("click", downloadSVG);
     el("downloadPngBtn").addEventListener("click", downloadPNG);
+
+    el("chartSvg").addEventListener("pointermove", updateActiveEdit);
+    el("chartSvg").addEventListener("pointerup", endActiveEdit);
+    el("chartSvg").addEventListener("pointercancel", endActiveEdit);
   </script>
 </body>
 </html>
