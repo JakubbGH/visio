@@ -4,51 +4,31 @@
   <meta charset="utf-8">
   <title>CSV Org Chart Builder</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-
   <style>
     :root {
       --bg: #eef3f7;
-      --bg-soft: #f7fafc;
       --card: #ffffff;
       --text: #122033;
       --muted: #687789;
-      --subtle: #94a3b8;
       --border: #d8e1ea;
-
       --primary: #007a3d;
       --primary-dark: #005f2f;
       --primary-soft: #e6f4ed;
-
-      --accent: #0f766e;
       --danger: #b42318;
-
       --warn-bg: #fff8ed;
       --warn-border: #f5c98b;
-
       --shadow-sm: 0 4px 14px rgba(15, 23, 42, 0.06);
       --shadow-md: 0 18px 42px rgba(15, 23, 42, 0.10);
-
       --radius-lg: 24px;
       --radius-md: 16px;
       --radius-sm: 12px;
     }
 
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
 
     body {
       margin: 0;
-      font-family:
-        Inter,
-        ui-sans-serif,
-        system-ui,
-        -apple-system,
-        BlinkMacSystemFont,
-        "Segoe UI",
-        Arial,
-        Helvetica,
-        sans-serif;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, Helvetica, sans-serif;
       background:
         radial-gradient(circle at top left, rgba(0, 122, 61, 0.10), transparent 34rem),
         linear-gradient(180deg, #f8fbfd 0%, var(--bg) 100%);
@@ -160,10 +140,6 @@
       background: #ffffff;
       color: var(--text);
       outline: none;
-      transition:
-        border-color 140ms ease,
-        box-shadow 140ms ease,
-        background-color 140ms ease;
     }
 
     input:focus,
@@ -205,33 +181,15 @@
       letter-spacing: -0.01em;
       cursor: pointer;
       box-shadow: 0 8px 18px rgba(0, 122, 61, 0.20);
-      transition:
-        transform 120ms ease,
-        box-shadow 120ms ease,
-        background-color 120ms ease,
-        opacity 120ms ease;
     }
 
-    button:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 12px 24px rgba(0, 122, 61, 0.25);
-    }
-
-    button:active {
-      transform: translateY(0);
-      box-shadow: 0 6px 14px rgba(0, 122, 61, 0.18);
-    }
+    button:hover { transform: translateY(-1px); }
 
     button.secondary {
       background: #ffffff;
       color: #1f2f45;
       border: 1px solid #d7e1eb;
       box-shadow: var(--shadow-sm);
-    }
-
-    button.secondary:hover {
-      background: #f6f9fc;
-      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
     }
 
     button:disabled {
@@ -287,15 +245,6 @@
       cursor: pointer;
       user-select: none;
       box-shadow: 0 3px 9px rgba(15, 23, 42, 0.04);
-      transition:
-        border-color 120ms ease,
-        background-color 120ms ease,
-        color 120ms ease,
-        transform 120ms ease;
-    }
-
-    .toggle-pill:hover {
-      transform: translateY(-1px);
     }
 
     .toggle-pill input {
@@ -327,9 +276,7 @@
       box-shadow: var(--shadow-sm);
     }
 
-    .preview-sidebar label {
-      margin-top: 13px;
-    }
+    .preview-sidebar label { margin-top: 13px; }
 
     .sidebar-hint {
       color: var(--muted);
@@ -373,6 +320,7 @@
       display: block;
       border-radius: 14px;
       box-shadow: 0 10px 30px rgba(15, 23, 42, 0.10);
+      touch-action: none;
     }
 
     .stats {
@@ -402,7 +350,6 @@
       padding: 18px;
       font-size: 13px;
       line-height: 1.5;
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
     }
 
     code {
@@ -418,50 +365,19 @@
     }
 
     @media (max-width: 900px) {
-      .hero {
-        display: block;
-      }
-
-      .badge {
-        display: inline-block;
-        margin-top: 16px;
-      }
-
-      .grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
-
-      .preview-layout {
-        grid-template-columns: 1fr;
-      }
-
-      .preview-sidebar {
-        position: static;
-      }
+      .hero { display: block; }
+      .badge { display: inline-block; margin-top: 16px; }
+      .grid { grid-template-columns: repeat(2, 1fr); }
+      .preview-layout { grid-template-columns: 1fr; }
+      .preview-sidebar { position: static; }
     }
 
     @media (max-width: 560px) {
-      .shell {
-        width: min(100% - 20px, 1240px);
-        margin: 20px auto;
-      }
-
-      .card {
-        padding: 18px;
-        border-radius: 20px;
-      }
-
-      .grid {
-        grid-template-columns: 1fr;
-      }
-
-      .actions {
-        display: grid;
-      }
-
-      button {
-        width: 100%;
-      }
+      .shell { width: min(100% - 20px, 1240px); margin: 20px auto; }
+      .card { padding: 18px; border-radius: 20px; }
+      .grid { grid-template-columns: 1fr; }
+      .actions { display: grid; }
+      button { width: 100%; }
     }
   </style>
 </head>
@@ -491,43 +407,16 @@
       <input id="csvFile" type="file" accept=".csv">
 
       <div class="grid" style="margin-top: 18px;">
-        <label>
-          Employee ID column
-          <input id="idCol" value="Employee ID">
-        </label>
-
-        <label>
-          Name column
-          <input id="nameCol" value="Name">
-        </label>
-
-        <label>
-          Manager ID column
-          <input id="managerCol" value="Manager ID">
-        </label>
-
-        <label>
-          Building column
-          <input id="buildingCol" value="Building">
-        </label>
+        <label>Employee ID column<input id="idCol" value="Employee ID"></label>
+        <label>Name column<input id="nameCol" value="Name"></label>
+        <label>Manager ID column<input id="managerCol" value="Manager ID"></label>
+        <label>Building column<input id="buildingCol" value="Building"></label>
       </div>
 
       <div class="grid" style="margin-top: 14px;">
-        <label>
-          Title / role column
-          <input id="titleCol" value="Job Role">
-        </label>
-
-        <label>
-          Type column
-          <input id="typeCol" value="Type of Work">
-        </label>
-
-        <label>
-          Area column
-          <input id="areaCol" value="Area">
-        </label>
-
+        <label>Title / role column<input id="titleCol" value="Job Role"></label>
+        <label>Type column<input id="typeCol" value="Type of Work"></label>
+        <label>Area column<input id="areaCol" value="Area"></label>
         <label>
           Chart to view
           <select id="buildingSelect" disabled>
@@ -559,43 +448,16 @@
           </select>
           <span class="hint">Turn off after the first pass to manually fine-tune.</span>
         </label>
-
-        <label>
-          Box width
-          <input id="boxWidth" type="number" value="210">
-        </label>
-
-        <label>
-          Box height
-          <input id="boxHeight" type="number" value="88">
-        </label>
-
-        <label>
-          Manager subtree gap
-          <input id="managerGap" type="number" value="34">
-        </label>
+        <label>Box width<input id="boxWidth" type="number" value="210"></label>
+        <label>Box height<input id="boxHeight" type="number" value="88"></label>
+        <label>Manager subtree gap<input id="managerGap" type="number" value="34"></label>
       </div>
 
       <div class="grid" style="margin-top: 14px;">
-        <label>
-          Generation gap
-          <input id="generationGap" type="number" value="72">
-        </label>
-
-        <label>
-          Leaf gap
-          <input id="leafGap" type="number" value="22">
-        </label>
-
-        <label>
-          Leaf row gap
-          <input id="leafRowGap" type="number" value="28">
-        </label>
-
-        <label>
-          Leaf section gap
-          <input id="leafSectionGap" type="number" value="40">
-        </label>
+        <label>Generation gap<input id="generationGap" type="number" value="72"></label>
+        <label>Leaf gap<input id="leafGap" type="number" value="22"></label>
+        <label>Leaf row gap<input id="leafRowGap" type="number" value="28"></label>
+        <label>Leaf section gap<input id="leafSectionGap" type="number" value="40"></label>
       </div>
 
       <div class="grid" style="margin-top: 14px;">
@@ -613,15 +475,8 @@
           </select>
         </label>
 
-        <label>
-          Page margin
-          <input id="pageMargin" type="number" value="28">
-        </label>
-
-        <label>
-          Header height
-          <input id="headerHeight" type="number" value="92">
-        </label>
+        <label>Page margin<input id="pageMargin" type="number" value="28"></label>
+        <label>Header height<input id="headerHeight" type="number" value="92"></label>
       </div>
 
       <div class="actions">
@@ -680,20 +535,9 @@
                 </select>
               </label>
 
-              <label>
-                Box fill
-                <input id="boxFill" type="color" value="#ffffff">
-              </label>
-
-              <label>
-                Box border
-                <input id="boxStroke" type="color" value="#00843D">
-              </label>
-
-              <label>
-                Text colour
-                <input id="boxText" type="color" value="#172033">
-              </label>
+              <label>Box fill<input id="boxFill" type="color" value="#ffffff"></label>
+              <label>Box border<input id="boxStroke" type="color" value="#00843D"></label>
+              <label>Text colour<input id="boxText" type="color" value="#172033"></label>
 
               <p class="sidebar-hint">
                 Layout: drag any selected box to move the group. The green resize handle appears only on the last selected box.
@@ -701,10 +545,7 @@
             </div>
 
             <div id="lineControls" hidden>
-              <label>
-                Line colour
-                <input id="lineStroke" type="color" value="#64748b">
-              </label>
+              <label>Line colour<input id="lineStroke" type="color" value="#64748b"></label>
 
               <label>
                 Line style
@@ -813,11 +654,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     async function loadLogo() {
       try {
         const response = await fetch(LOGO_PATH);
-
-        if (!response.ok) {
-          throw new Error("Logo not found");
-        }
-
+        if (!response.ok) throw new Error("Logo not found");
         const blob = await response.blob();
         logoDataUrl = await blobToDataUrl(blob);
       } catch (error) {
@@ -827,9 +664,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     }
 
     const logoReady = loadLogo().then(() => {
-      if (allRows.length) {
-        drawChart();
-      }
+      if (allRows.length) drawChart();
     });
 
     function cleanText(value) {
@@ -883,11 +718,9 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         .filter(r => r.some(v => cleanText(v)))
         .map(r => {
           const obj = {};
-
           headers.forEach((h, i) => {
             obj[h] = cleanText(r[i] ?? "");
           });
-
           return obj;
         });
     }
@@ -929,9 +762,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         const id = cleanText(row[idCol]);
         const name = cleanText(row[nameCol]);
 
-        if (!id || !name) {
-          return;
-        }
+        if (!id || !name) return;
 
         nodes.set(id, {
           id,
@@ -966,16 +797,10 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         }
       });
 
-      nodes.forEach(node => {
-        node.children.sort((a, b) => a.name.localeCompare(b.name));
-      });
-
+      nodes.forEach(node => node.children.sort((a, b) => a.name.localeCompare(b.name)));
       roots.sort((a, b) => a.name.localeCompare(b.name));
 
-      return {
-        nodes: Array.from(nodes.values()),
-        roots
-      };
+      return { nodes: Array.from(nodes.values()), roots };
     }
 
     function getPageConfig() {
@@ -1005,11 +830,8 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       const leafChildren = [];
 
       node.children.forEach(child => {
-        if (isLeaf(child)) {
-          leafChildren.push(child);
-        } else {
-          managerChildren.push(child);
-        }
+        if (isLeaf(child)) leafChildren.push(child);
+        else managerChildren.push(child);
       });
 
       return { managerChildren, leafChildren };
@@ -1017,17 +839,12 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
     function packLeavesIntoRows(leaves, maxWidth, boxW, gap) {
       const rows = [];
-
-      if (!leaves.length) {
-        return rows;
-      }
+      if (!leaves.length) return rows;
 
       let current = { items: [], width: 0 };
 
       leaves.forEach(leaf => {
-        const nextWidth = current.items.length
-          ? current.width + gap + boxW
-          : boxW;
+        const nextWidth = current.items.length ? current.width + gap + boxW : boxW;
 
         if (current.items.length && nextWidth > maxWidth) {
           rows.push(current);
@@ -1038,10 +855,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         }
       });
 
-      if (current.items.length) {
-        rows.push(current);
-      }
-
+      if (current.items.length) rows.push(current);
       return rows;
     }
 
@@ -1074,7 +888,6 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       );
 
       const leafBlockWidth = leafRows.reduce((max, row) => Math.max(max, row.width), 0);
-
       const leafBlockHeight = leafRows.reduce((sum, row, index) => {
         return sum + options.boxH + (index > 0 ? options.leafRowGap : 0);
       }, 0);
@@ -1085,13 +898,8 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       let childBlockHeight = 0;
 
-      if (managerChildren.length) {
-        childBlockHeight += managerBlockHeight;
-      }
-
-      if (leafRows.length) {
-        childBlockHeight += (managerChildren.length ? options.leafSectionGap : 0) + leafBlockHeight;
-      }
+      if (managerChildren.length) childBlockHeight += managerBlockHeight;
+      if (leafRows.length) childBlockHeight += (managerChildren.length ? options.leafSectionGap : 0) + leafBlockHeight;
 
       const childBlockWidth = Math.max(managerRowWidth, leafBlockWidth);
 
@@ -1143,12 +951,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       }
 
       node.children.forEach(child => {
-        assignAbsolutePositions(
-          child,
-          originX + child.relX,
-          originY + child.relY,
-          options
-        );
+        assignAbsolutePositions(child, originX + child.relX, originY + child.relY, options);
       });
     }
 
@@ -1162,33 +965,13 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       const fields = [];
 
-      if (el("showName").checked) {
-        fields.push({ text: node.name, cls: "name" });
-      }
-
-      if (el("showEmployeeId").checked) {
-        fields.push({ text: cleanText(node.row[idCol]), cls: "meta" });
-      }
-
-      if (el("showJobRole").checked) {
-        fields.push({ text: cleanText(node.row[titleCol]), cls: "meta" });
-      }
-
-      if (el("showTypeOfWork").checked) {
-        fields.push({ text: cleanText(node.row[typeCol]), cls: "meta" });
-      }
-
-      if (el("showArea").checked) {
-        fields.push({ text: cleanText(node.row[areaCol]), cls: "meta" });
-      }
-
-      if (el("showBuilding").checked) {
-        fields.push({ text: cleanText(node.row[buildingCol]), cls: "meta" });
-      }
-
-      if (el("showManagerId").checked) {
-        fields.push({ text: cleanText(node.row[managerCol]), cls: "meta" });
-      }
+      if (el("showName").checked) fields.push({ text: node.name, cls: "name" });
+      if (el("showEmployeeId").checked) fields.push({ text: cleanText(node.row[idCol]), cls: "meta" });
+      if (el("showJobRole").checked) fields.push({ text: cleanText(node.row[titleCol]), cls: "meta" });
+      if (el("showTypeOfWork").checked) fields.push({ text: cleanText(node.row[typeCol]), cls: "meta" });
+      if (el("showArea").checked) fields.push({ text: cleanText(node.row[areaCol]), cls: "meta" });
+      if (el("showBuilding").checked) fields.push({ text: cleanText(node.row[buildingCol]), cls: "meta" });
+      if (el("showManagerId").checked) fields.push({ text: cleanText(node.row[managerCol]), cls: "meta" });
 
       return fields.filter(field => field.text).slice(0, 5);
     }
@@ -1229,14 +1012,8 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     }
 
     function getStrokeDashArray(style) {
-      if (style === "dotted") {
-        return "2 5";
-      }
-
-      if (style === "dashed") {
-        return "9 6";
-      }
-
+      if (style === "dotted") return "2 5";
+      if (style === "dashed") return "9 6";
       return "";
     }
 
@@ -1244,21 +1021,10 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       const boxW = getNodeBoxW(node, options);
       const boxH = getNodeBoxH(node, options);
 
-      if (side === "top") {
-        return { x: node.boxX + boxW / 2, y: node.boxY, side };
-      }
-
-      if (side === "bottom") {
-        return { x: node.boxX + boxW / 2, y: node.boxY + boxH, side };
-      }
-
-      if (side === "left") {
-        return { x: node.boxX, y: node.boxY + boxH / 2, side };
-      }
-
-      if (side === "right") {
-        return { x: node.boxX + boxW, y: node.boxY + boxH / 2, side };
-      }
+      if (side === "top") return { x: node.boxX + boxW / 2, y: node.boxY, side };
+      if (side === "bottom") return { x: node.boxX + boxW / 2, y: node.boxY + boxH, side };
+      if (side === "left") return { x: node.boxX, y: node.boxY + boxH / 2, side };
+      if (side === "right") return { x: node.boxX + boxW, y: node.boxY + boxH / 2, side };
 
       return { x: node.boxX + boxW / 2, y: node.boxY + boxH, side: "bottom" };
     }
@@ -1442,15 +1208,10 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       path.setAttribute("d", d);
       path.setAttribute("vector-effect", "non-scaling-stroke");
 
-      if (options.stroke) {
-        path.setAttribute("stroke", options.stroke);
-      }
+      if (options.stroke) path.setAttribute("stroke", options.stroke);
 
       const dashArray = getStrokeDashArray(options.style);
-
-      if (dashArray) {
-        path.setAttribute("stroke-dasharray", dashArray);
-      }
+      if (dashArray) path.setAttribute("stroke-dasharray", dashArray);
 
       path.setAttribute("pointer-events", "stroke");
 
@@ -1485,13 +1246,8 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     }
 
     function drawLineHandle(parent, start, end, style, connectorKey) {
-      if (!editMode) {
-        return;
-      }
-
-      if (selectedType !== "line" || !selectedLineKeys.has(connectorKey)) {
-        return;
-      }
+      if (!editMode) return;
+      if (selectedType !== "line" || !selectedLineKeys.has(connectorKey)) return;
 
       const offsetX = Number(style.offsetX) || 0;
       const offsetY = Number(style.offsetY) || 0;
@@ -1523,9 +1279,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     }
 
     function drawManagerConnectors(node, layer, options) {
-      if (node.isVirtual || !node.managerRow.length) {
-        return;
-      }
+      if (node.isVirtual || !node.managerRow.length) return;
 
       node.managerRow.forEach(child => {
         const connectorKey = getConnectorKey(node, child);
@@ -1533,25 +1287,19 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         const start = getConnectionPoint(node, style.parentSide, options);
         const end = getConnectionPoint(child, style.childSide, options);
 
-        drawPath(
-          layer,
-          buildElbowPath(start, end, style),
-          {
-            stroke: style.stroke,
-            style: style.style,
-            connectorKey,
-            clickHandler: event => selectLine(node, child, event.shiftKey)
-          }
-        );
+        drawPath(layer, buildElbowPath(start, end, style), {
+          stroke: style.stroke,
+          style: style.style,
+          connectorKey,
+          clickHandler: event => selectLine(node, child, event.shiftKey)
+        });
 
         drawLineHandle(layer, start, end, style, connectorKey);
       });
     }
 
     function drawLeafConnectors(node, layer, options) {
-      if (node.isVirtual || !node.leafRows.length) {
-        return;
-      }
+      if (node.isVirtual || !node.leafRows.length) return;
 
       node.leafRows.forEach(row => {
         row.items.forEach(child => {
@@ -1560,16 +1308,12 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
           const start = getConnectionPoint(node, style.parentSide, options);
           const end = getConnectionPoint(child, style.childSide, options);
 
-          drawPath(
-            layer,
-            buildElbowPath(start, end, style),
-            {
-              stroke: style.stroke,
-              style: style.style,
-              connectorKey,
-              clickHandler: event => selectLine(node, child, event.shiftKey)
-            }
-          );
+          drawPath(layer, buildElbowPath(start, end, style), {
+            stroke: style.stroke,
+            style: style.style,
+            connectorKey,
+            clickHandler: event => selectLine(node, child, event.shiftKey)
+          });
 
           drawLineHandle(layer, start, end, style, connectorKey);
         });
@@ -1582,9 +1326,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     }
 
     function drawNode(node, layer, options) {
-      if (node.isVirtual) {
-        return;
-      }
+      if (node.isVirtual) return;
 
       const boxW = getNodeBoxW(node, options);
       const boxH = getNodeBoxH(node, options);
@@ -1623,21 +1365,11 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       const textLines = getVisibleChartFields(node);
       const lineCount = Math.max(1, textLines.length);
 
-      const baseFont = Math.max(
-        8,
-        Math.min(
-          16,
-          Math.floor(boxH / (lineCount + 2))
-        )
-      );
-
+      const baseFont = Math.max(8, Math.min(16, Math.floor(boxH / (lineCount + 2))));
       const nameFont = Math.min(baseFont + 2, 18);
       const metaFont = baseFont;
 
-      const lineHeights = textLines.map(line => {
-        return line.cls === "name" ? nameFont + 3 : metaFont + 3;
-      });
-
+      const lineHeights = textLines.map(line => line.cls === "name" ? nameFont + 3 : metaFont + 3);
       const totalTextHeight = lineHeights.reduce((sum, h) => sum + h, 0);
       let y = node.boxY + (boxH - totalTextHeight) / 2 + (lineHeights[0] || 12) - 3;
 
@@ -1691,17 +1423,30 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       group.addEventListener("click", event => {
         event.stopPropagation();
+
+        if (window.__suppressNextNodeClick) {
+          window.__suppressNextNodeClick = false;
+          return;
+        }
+
         selectNode(node, event.shiftKey);
       });
 
-      if (editMode && selectedType === "node" && selectedNodeIds.has(node.id)) {
+      if (editMode) {
         group.addEventListener("pointerdown", event => {
-          if (event.target.classList.contains("resize-handle")) {
-            return;
-          }
+          if (event.target.classList.contains("resize-handle")) return;
 
           event.stopPropagation();
-          startDragNode(event, node, options);
+
+          /*
+            Group-drag fix:
+            - If this node is already selected, start a drag using the whole selectedNodeIds set.
+            - If this node is not selected, do not redraw/select inside pointerdown. Let the click handler
+              select it normally. This avoids redrawing the SVG under the pointer before a drag starts.
+          */
+          if (selectedType === "node" && selectedNodeIds.has(node.id)) {
+            startDragNode(event, node, options);
+          }
         });
       }
 
@@ -1709,17 +1454,9 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     }
 
     function renderTree(node, connectorLayer, nodeLayer, options) {
-      if (!node.isVirtual) {
-        drawConnectors(node, connectorLayer, options);
-      }
-
-      node.children.forEach(child => {
-        renderTree(child, connectorLayer, nodeLayer, options);
-      });
-
-      if (!node.isVirtual) {
-        drawNode(node, nodeLayer, options);
-      }
+      if (!node.isVirtual) drawConnectors(node, connectorLayer, options);
+      node.children.forEach(child => renderTree(child, connectorLayer, nodeLayer, options));
+      if (!node.isVirtual) drawNode(node, nodeLayer, options);
     }
 
     function countVisibleFields() {
@@ -1747,18 +1484,12 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     }
 
     function estimateDepth(node) {
-      if (!node.children.length) {
-        return 1;
-      }
-
+      if (!node.children.length) return 1;
       return 1 + Math.max(...node.children.map(estimateDepth));
     }
 
     function getTreeDepth(roots) {
-      if (!roots.length) {
-        return 1;
-      }
-
+      if (!roots.length) return 1;
       return Math.max(...roots.map(estimateDepth));
     }
 
@@ -1780,28 +1511,12 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       let boxW = 210;
       let boxH = 58 + visibleFields * 10;
 
-      if (maxTextLength > 28) {
-        boxW = 230;
-      }
+      if (maxTextLength > 28) boxW = 230;
+      if (maxTextLength > 36) boxW = 250;
 
-      if (maxTextLength > 36) {
-        boxW = 250;
-      }
-
-      if (nodes.length > 40) {
-        boxW -= 15;
-        boxH -= 4;
-      }
-
-      if (nodes.length > 80) {
-        boxW -= 20;
-        boxH -= 5;
-      }
-
-      if (nodes.length > 130) {
-        boxW -= 15;
-        boxH -= 4;
-      }
+      if (nodes.length > 40) { boxW -= 15; boxH -= 4; }
+      if (nodes.length > 80) { boxW -= 20; boxH -= 5; }
+      if (nodes.length > 130) { boxW -= 15; boxH -= 4; }
 
       boxW = Math.max(150, Math.min(260, boxW));
       boxH = Math.max(56, Math.min(112, boxH));
@@ -1812,9 +1527,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       let leafRowGap = Math.round(boxH * 0.30);
       let leafSectionGap = Math.round(boxH * 0.42);
 
-      if (managerCount > 15) {
-        managerGap = Math.max(18, managerGap - 8);
-      }
+      if (managerCount > 15) managerGap = Math.max(18, managerGap - 8);
 
       if (leafCount > 50) {
         leafGap = Math.max(10, leafGap - 8);
@@ -1841,9 +1554,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     }
 
     function maybeApplyAutoFit(nodes, roots, page) {
-      if (el("autoFit").value !== "on") {
-        return;
-      }
+      if (el("autoFit").value !== "on") return;
 
       const fit = getAutoFitOptions(nodes, roots, page);
 
@@ -1877,10 +1588,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     function applyManualLayout(nodes, options) {
       nodes.forEach(node => {
         const saved = manualLayout.get(node.id);
-
-        if (!saved) {
-          return;
-        }
+        if (!saved) return;
 
         if (Number.isFinite(saved.boxX)) node.boxX = saved.boxX;
         if (Number.isFinite(saved.boxY)) node.boxY = saved.boxY;
@@ -1898,29 +1606,21 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       point.y = event.clientY;
 
       const ctm = chartGroup.getScreenCTM();
-
-      if (!ctm) {
-        return { x: 0, y: 0 };
-      }
+      if (!ctm) return { x: 0, y: 0 };
 
       return point.matrixTransform(ctm.inverse());
     }
 
     function startDragNode(event, node, options) {
-      if (!editMode) {
-        return;
-      }
+      if (!editMode) return;
 
       const svg = el("chartSvg");
       const chartGroup = document.getElementById("chartGroup");
-
-      if (!chartGroup) {
-        return;
-      }
+      if (!chartGroup) return;
 
       const start = getChartLocalPoint(event, svg, chartGroup);
 
-      const idsToDrag = selectedNodeIds.has(node.id)
+      const idsToDrag = selectedType === "node" && selectedNodeIds.has(node.id)
         ? Array.from(selectedNodeIds)
         : [node.id];
 
@@ -1942,7 +1642,8 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         nodeIds: idsToDrag,
         originals,
         startX: start.x,
-        startY: start.y
+        startY: start.y,
+        moved: false
       };
 
       try {
@@ -1953,16 +1654,11 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     }
 
     function startResizeNode(event, node, options) {
-      if (!editMode) {
-        return;
-      }
+      if (!editMode) return;
 
       const svg = el("chartSvg");
       const chartGroup = document.getElementById("chartGroup");
-
-      if (!chartGroup) {
-        return;
-      }
+      if (!chartGroup) return;
 
       const start = getChartLocalPoint(event, svg, chartGroup);
 
@@ -1982,16 +1678,11 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     }
 
     function startDragLine(event, connectorKey) {
-      if (!editMode) {
-        return;
-      }
+      if (!editMode) return;
 
       const svg = el("chartSvg");
       const chartGroup = document.getElementById("chartGroup");
-
-      if (!chartGroup) {
-        return;
-      }
+      if (!chartGroup) return;
 
       const start = getChartLocalPoint(event, svg, chartGroup);
       const existing = connectorStyles.get(connectorKey) || getDefaultConnectorStyle();
@@ -2012,16 +1703,11 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     }
 
     function updateActiveLineDrag(event) {
-      if (!editMode || !activeLineDrag || isRedrawingFromPointer) {
-        return;
-      }
+      if (!editMode || !activeLineDrag || isRedrawingFromPointer) return;
 
       const svg = el("chartSvg");
       const chartGroup = document.getElementById("chartGroup");
-
-      if (!chartGroup) {
-        return;
-      }
+      if (!chartGroup) return;
 
       const point = getChartLocalPoint(event, svg, chartGroup);
       const dx = point.x - activeLineDrag.startX;
@@ -2049,22 +1735,21 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         return;
       }
 
-      if (!editMode || (!activeDrag && !activeResize) || isRedrawingFromPointer) {
-        return;
-      }
+      if (!editMode || (!activeDrag && !activeResize) || isRedrawingFromPointer) return;
 
       const svg = el("chartSvg");
       const chartGroup = document.getElementById("chartGroup");
-
-      if (!chartGroup) {
-        return;
-      }
+      if (!chartGroup) return;
 
       const point = getChartLocalPoint(event, svg, chartGroup);
 
       if (activeDrag) {
         const dx = point.x - activeDrag.startX;
         const dy = point.y - activeDrag.startY;
+
+        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+          activeDrag.moved = true;
+        }
 
         activeDrag.originals.forEach(original => {
           const saved = manualLayout.get(original.id) || {};
@@ -2099,8 +1784,10 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     }
 
     function endActiveEdit(event) {
-      if (!activeDrag && !activeResize && !activeLineDrag) {
-        return;
+      if (!activeDrag && !activeResize && !activeLineDrag) return;
+
+      if (activeDrag?.moved) {
+        window.__suppressNextNodeClick = true;
       }
 
       activeDrag = null;
@@ -2388,9 +2075,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     el("csvFile").addEventListener("change", async event => {
       const file = event.target.files[0];
 
-      if (!file) {
-        return;
-      }
+      if (!file) return;
 
       currentFileStem = safeName(file.name.replace(/\.csv$/i, ""));
       const text = await file.text();
@@ -2471,9 +2156,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     el("boxPreset").addEventListener("change", () => {
       const preset = BOX_PRESETS[el("boxPreset").value];
 
-      if (!preset) {
-        return;
-      }
+      if (!preset) return;
 
       el("boxFill").value = preset.fill;
       el("boxStroke").value = preset.stroke;
