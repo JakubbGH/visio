@@ -253,6 +253,22 @@
       margin-top: 14px;
     }
 
+    .sidebar-section {
+      border-top: 1px solid var(--border);
+      margin-top: 14px;
+      padding-top: 14px;
+    }
+
+    .sidebar-section h4 {
+      margin: 0 0 10px;
+      font-size: 15px;
+    }
+
+    .full-width {
+      width: 100%;
+      margin-top: 8px;
+    }
+
     #chartWrap {
       overflow: auto;
       max-height: 80vh;
@@ -510,15 +526,12 @@
 
       <div class="actions">
         <button id="buildBtn" type="button">Build chart</button>
-        <button id="editModeBtn" class="secondary" type="button" disabled>Edit layout: Off</button>
-        <button id="resetLayoutBtn" class="secondary" type="button" disabled>Reset layout</button>
         <button id="downloadSvgBtn" class="secondary" type="button" disabled>Download SVG</button>
         <button id="downloadPngBtn" class="secondary" type="button" disabled>Download PNG</button>
       </div>
 
       <p class="hint">
-        Edit layout mode: drag boxes to move them. Drag the green corner handle to resize a box.
-        Click a box or connector to customise it in the left panel beside the preview.
+        Layout editing and style customisation are in the left panel beside the preview.
       </p>
 
       <p id="errorBox" class="error"></p>
@@ -536,73 +549,101 @@
             Click a box or connector line to customise it.
           </p>
 
-          <div id="boxControls" hidden>
-            <label>
-              Box preset
-              <select id="boxPreset">
-                <option value="green">White box, green outline</option>
-                <option value="lightBlue">Light Blue box</option>
-                <option value="blackBorder">Black border, white box, black text</option>
-                <option value="blackBox">Black box, white text</option>
-                <option value="custom">Custom</option>
-              </select>
-            </label>
+          <div class="sidebar-section">
+            <h4>Layout editing</h4>
 
-            <label>
-              Box fill
-              <input id="boxFill" type="color" value="#ffffff">
-            </label>
+            <button id="editModeBtn" class="secondary full-width" type="button" disabled>
+              Edit layout: Off
+            </button>
 
-            <label>
-              Box border
-              <input id="boxStroke" type="color" value="#00843D">
-            </label>
+            <button id="resetLayoutBtn" class="secondary full-width" type="button" disabled>
+              Reset layout
+            </button>
 
-            <label>
-              Text colour
-              <input id="boxText" type="color" value="#172033">
-            </label>
+            <p class="sidebar-hint">
+              Turn edit mode on, then select a box or connector. Only the selected item will show its drag or resize handle.
+            </p>
           </div>
 
-          <div id="lineControls" hidden>
-            <label>
-              Line colour
-              <input id="lineStroke" type="color" value="#64748b">
-            </label>
+          <div class="sidebar-section">
+            <h4>Style</h4>
 
-            <label>
-              Line style
-              <select id="lineStyle">
-                <option value="solid">Solid</option>
-                <option value="dotted">Dotted</option>
-                <option value="dashed">Dashed</option>
-              </select>
-            </label>
+            <div id="boxControls" hidden>
+              <label>
+                Box preset
+                <select id="boxPreset">
+                  <option value="green">White box, green outline</option>
+                  <option value="lightBlue">Light Blue box</option>
+                  <option value="blackBorder">Black border, white box, black text</option>
+                  <option value="blackBox">Black box, white text</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </label>
 
-            <label>
-              Parent side
-              <select id="parentSide">
-                <option value="bottom">Parent bottom</option>
-                <option value="top">Parent top</option>
-                <option value="left">Parent left</option>
-                <option value="right">Parent right</option>
-              </select>
-            </label>
+              <label>
+                Box fill
+                <input id="boxFill" type="color" value="#ffffff">
+              </label>
 
-            <label>
-              Child side
-              <select id="childSide">
-                <option value="top">Child top</option>
-                <option value="bottom">Child bottom</option>
-                <option value="left">Child left</option>
-                <option value="right">Child right</option>
-              </select>
-            </label>
-          </div>
+              <label>
+                Box border
+                <input id="boxStroke" type="color" value="#00843D">
+              </label>
 
-          <div class="sidebar-actions">
-            <button id="applyStyleBtn" type="button" disabled>Apply style</button>
-            <button id="clearSelectionBtn" class="secondary" type="button">Clear selection</button>
+              <label>
+                Text colour
+                <input id="boxText" type="color" value="#172033">
+              </label>
+
+              <p class="sidebar-hint">
+                Layout: drag the selected box to move it. Use the green corner handle to resize it.
+              </p>
+            </div>
+
+            <div id="lineControls" hidden>
+              <label>
+                Line colour
+                <input id="lineStroke" type="color" value="#64748b">
+              </label>
+
+              <label>
+                Line style
+                <select id="lineStyle">
+                  <option value="solid">Solid</option>
+                  <option value="dotted">Dotted</option>
+                  <option value="dashed">Dashed</option>
+                </select>
+              </label>
+
+              <label>
+                Parent side
+                <select id="parentSide">
+                  <option value="bottom">Parent bottom</option>
+                  <option value="top">Parent top</option>
+                  <option value="left">Parent left</option>
+                  <option value="right">Parent right</option>
+                </select>
+              </label>
+
+              <label>
+                Child side
+                <select id="childSide">
+                  <option value="top">Child top</option>
+                  <option value="bottom">Child bottom</option>
+                  <option value="left">Child left</option>
+                  <option value="right">Child right</option>
+                </select>
+              </label>
+
+              <p class="sidebar-hint">
+                Layout: drag the selected connector’s circle handle to move its elbow route.
+              </p>
+            </div>
+
+            <div class="sidebar-actions">
+              <button id="applyStyleBtn" type="button" disabled>Apply style</button>
+              <button id="clearSelectionBtn" class="secondary" type="button">Clear selection</button>
+            </div>
           </div>
         </aside>
 
@@ -643,26 +684,10 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     let connectorStyles = new Map();
 
     const BOX_PRESETS = {
-      green: {
-        fill: "#ffffff",
-        stroke: "#00843D",
-        text: "#172033"
-      },
-      lightBlue: {
-        fill: "#dbeafe",
-        stroke: "#2563eb",
-        text: "#172033"
-      },
-      blackBorder: {
-        fill: "#ffffff",
-        stroke: "#000000",
-        text: "#000000"
-      },
-      blackBox: {
-        fill: "#000000",
-        stroke: "#000000",
-        text: "#ffffff"
-      }
+      green: { fill: "#ffffff", stroke: "#00843D", text: "#172033" },
+      lightBlue: { fill: "#dbeafe", stroke: "#2563eb", text: "#172033" },
+      blackBorder: { fill: "#ffffff", stroke: "#000000", text: "#000000" },
+      blackBox: { fill: "#000000", stroke: "#000000", text: "#ffffff" }
     };
 
     const PAGE_PRESETS = {
@@ -893,10 +918,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         return rows;
       }
 
-      let current = {
-        items: [],
-        width: 0
-      };
+      let current = { items: [], width: 0 };
 
       leaves.forEach(leaf => {
         const nextWidth = current.items.length
@@ -905,10 +927,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
         if (current.items.length && nextWidth > maxWidth) {
           rows.push(current);
-          current = {
-            items: [leaf],
-            width: boxW
-          };
+          current = { items: [leaf], width: boxW };
         } else {
           current.items.push(leaf);
           current.width = nextWidth;
@@ -1079,11 +1098,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     }
 
     function getDefaultNodeStyle() {
-      return {
-        fill: "#ffffff",
-        stroke: "#00843D",
-        text: "#172033"
-      };
+      return { fill: "#ffffff", stroke: "#00843D", text: "#172033" };
     }
 
     function getNodeStyle(node) {
@@ -1197,17 +1212,23 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       el("applyStyleBtn").disabled = !hasNode && !hasLine;
 
       if (!hasNode && !hasLine) {
-        el("selectionHint").textContent = "Click a box or connector line to customise it.";
+        el("selectionHint").textContent = editMode
+          ? "Edit mode is on. Select a box or connector to show its layout handles."
+          : "Click a box or connector line to customise it.";
         return;
       }
 
       if (hasNode) {
-        el("selectionHint").textContent = "Box selected. Adjust colours below, then apply.";
+        el("selectionHint").textContent = editMode
+          ? "Box selected. Drag it to move it, or resize it from the green corner."
+          : "Box selected. Adjust colours below, then apply.";
         return;
       }
 
       if (hasLine) {
-        el("selectionHint").textContent = "Connector selected. Adjust line options below, then apply.";
+        el("selectionHint").textContent = editMode
+          ? "Connector selected. Drag the circle handle to move its elbow route."
+          : "Connector selected. Adjust line options below, then apply.";
       }
     }
 
@@ -1290,7 +1311,14 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       }
 
       path.setAttribute("pointer-events", "stroke");
-      path.style.cursor = editMode && options.connectorKey ? "grab" : "pointer";
+
+      path.style.cursor =
+        editMode &&
+        options.connectorKey &&
+        selectedType === "line" &&
+        selectedLineKey === options.connectorKey
+          ? "grab"
+          : "pointer";
 
       if (options.clickHandler) {
         path.addEventListener("click", event => {
@@ -1299,12 +1327,13 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         });
       }
 
-      if (options.connectorKey) {
+      if (
+        options.connectorKey &&
+        editMode &&
+        selectedType === "line" &&
+        selectedLineKey === options.connectorKey
+      ) {
         path.addEventListener("pointerdown", event => {
-          if (!editMode) {
-            return;
-          }
-
           event.stopPropagation();
           startDragLine(event, options.connectorKey);
         });
@@ -1315,6 +1344,10 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
     function drawLineHandle(parent, start, end, style, connectorKey) {
       if (!editMode) {
+        return;
+      }
+
+      if (selectedType !== "line" || selectedLineKey !== connectorKey) {
         return;
       }
 
@@ -1335,7 +1368,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       const handle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
       handle.setAttribute("cx", handleX);
       handle.setAttribute("cy", handleY);
-      handle.setAttribute("r", 6);
+      handle.setAttribute("r", 7);
       handle.setAttribute("class", "line-handle");
       handle.style.cursor = "grab";
 
@@ -1417,7 +1450,9 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
       group.setAttribute("data-node-id", node.id);
-      group.style.cursor = editMode ? "move" : "pointer";
+      group.style.cursor = editMode && selectedType === "node" && selectedNodeId === node.id
+        ? "move"
+        : "pointer";
 
       const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
       rect.setAttribute("class", "box");
@@ -1492,8 +1527,8 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         y += lineHeights[i];
       });
 
-      if (editMode) {
-        const handleSize = 12;
+      if (editMode && selectedType === "node" && selectedNodeId === node.id) {
+        const handleSize = 13;
         const handle = document.createElementNS("http://www.w3.org/2000/svg", "rect");
 
         handle.setAttribute("class", "resize-handle");
@@ -1510,17 +1545,23 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         });
 
         group.appendChild(handle);
-
-        group.addEventListener("pointerdown", event => {
-          event.stopPropagation();
-          startDragNode(event, node, options);
-        });
       }
 
       group.addEventListener("click", event => {
         event.stopPropagation();
         selectNode(node);
       });
+
+      if (editMode && selectedType === "node" && selectedNodeId === node.id) {
+        group.addEventListener("pointerdown", event => {
+          if (event.target.classList.contains("resize-handle")) {
+            return;
+          }
+
+          event.stopPropagation();
+          startDragNode(event, node, options);
+        });
+      }
 
       layer.appendChild(group);
     }
