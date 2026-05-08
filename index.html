@@ -631,7 +631,7 @@
       </div>
 
       <p class="hint">
-        Layout editing and style customisation are in the left panel beside the preview.
+        Layout editing and style customisation are in the left panel beside the preview. Hold Shift while clicking boxes or connectors to select multiple.
       </p>
 
       <p id="errorBox" class="error"></p>
@@ -661,7 +661,7 @@
             </button>
 
             <p class="sidebar-hint">
-              Turn edit mode on, then select a box or connector. Only the selected item will show its drag or resize handle.
+              Turn edit mode on, then select a box or connector. Hold Shift to select multiple. Drag any selected box to move selected boxes together.
             </p>
           </div>
 
@@ -696,7 +696,7 @@
               </label>
 
               <p class="sidebar-hint">
-                Layout: drag the selected box to move it. Use the green corner handle to resize it.
+                Layout: drag any selected box to move the group. The green resize handle appears only on the last selected box.
               </p>
             </div>
 
@@ -736,7 +736,7 @@
               </label>
 
               <p class="sidebar-hint">
-                Layout: drag the selected connector’s circle handle to move its elbow route.
+                Layout: selected connectors show circle handles. Drag a handle to move that connector’s elbow route.
               </p>
             </div>
 
@@ -779,6 +779,10 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     let selectedType = "";
     let selectedLineKey = "";
     let selectedNodeId = "";
+    let selectedNodeIds = new Set();
+    let selectedLineKeys = new Set();
+
+    let lastDrawnNodesById = new Map();
 
     let nodeStyles = new Map();
     let connectorStyles = new Map();
@@ -1299,13 +1303,19 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       selectedType = "";
       selectedNodeId = "";
       selectedLineKey = "";
+      selectedNodeIds.clear();
+      selectedLineKeys.clear();
+
       updateSelectionPanel();
       drawChart();
     }
 
     function updateSelectionPanel() {
-      const hasNode = selectedType === "node" && selectedNodeId;
-      const hasLine = selectedType === "line" && selectedLineKey;
+      const nodeCount = selectedNodeIds.size;
+      const lineCount = selectedLineKeys.size;
+
+      const hasNode = selectedType === "node" && nodeCount > 0;
+      const hasLine = selectedType === "line" && lineCount > 0;
 
       el("boxControls").hidden = !hasNode;
       el("lineControls").hidden = !hasLine;
@@ -1313,28 +1323,41 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       if (!hasNode && !hasLine) {
         el("selectionHint").textContent = editMode
-          ? "Edit mode is on. Select a box or connector to show its layout handles."
-          : "Click a box or connector line to customise it.";
+          ? "Edit mode is on. Select a box or connector. Shift-click to select multiple."
+          : "Click a box or connector line to customise it. Shift-click to select multiple.";
         return;
       }
 
       if (hasNode) {
         el("selectionHint").textContent = editMode
-          ? "Box selected. Drag it to move it, or resize it from the green corner."
-          : "Box selected. Adjust colours below, then apply.";
+          ? `${nodeCount} box${nodeCount === 1 ? "" : "es"} selected. Drag any selected box to move the group. Resize is single-box only.`
+          : `${nodeCount} box${nodeCount === 1 ? "" : "es"} selected. Adjust colours below, then apply.`;
         return;
       }
 
       if (hasLine) {
         el("selectionHint").textContent = editMode
-          ? "Connector selected. Drag the circle handle to move its elbow route."
-          : "Connector selected. Adjust line options below, then apply.";
+          ? `${lineCount} connector${lineCount === 1 ? "" : "s"} selected. Drag a selected connector handle to adjust that route.`
+          : `${lineCount} connector${lineCount === 1 ? "" : "s"} selected. Adjust line options below, then apply.`;
       }
     }
 
-    function selectNode(node) {
-      selectedType = "node";
-      selectedNodeId = node.id;
+    function selectNode(node, additive = false) {
+      if (!additive) {
+        selectedNodeIds.clear();
+        selectedLineKeys.clear();
+      }
+
+      if (additive && selectedNodeIds.has(node.id)) {
+        selectedNodeIds.delete(node.id);
+      } else {
+        selectedNodeIds.add(node.id);
+      }
+
+      selectedLineKeys.clear();
+
+      selectedType = selectedNodeIds.size ? "node" : "";
+      selectedNodeId = selectedNodeIds.size ? Array.from(selectedNodeIds).at(-1) : "";
       selectedLineKey = "";
 
       const style = getNodeStyle(node);
@@ -1348,9 +1371,24 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       drawChart();
     }
 
-    function selectLine(parent, child) {
-      selectedType = "line";
-      selectedLineKey = getConnectorKey(parent, child);
+    function selectLine(parent, child, additive = false) {
+      const key = getConnectorKey(parent, child);
+
+      if (!additive) {
+        selectedLineKeys.clear();
+        selectedNodeIds.clear();
+      }
+
+      if (additive && selectedLineKeys.has(key)) {
+        selectedLineKeys.delete(key);
+      } else {
+        selectedLineKeys.add(key);
+      }
+
+      selectedNodeIds.clear();
+
+      selectedType = selectedLineKeys.size ? "line" : "";
+      selectedLineKey = selectedLineKeys.size ? Array.from(selectedLineKeys).at(-1) : "";
       selectedNodeId = "";
 
       const style = getConnectorStyle(parent, child);
@@ -1365,23 +1403,27 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     }
 
     function applyCurrentStyle() {
-      if (selectedType === "node" && selectedNodeId) {
-        nodeStyles.set(selectedNodeId, {
-          fill: el("boxFill").value,
-          stroke: el("boxStroke").value,
-          text: el("boxText").value
+      if (selectedType === "node" && selectedNodeIds.size) {
+        selectedNodeIds.forEach(id => {
+          nodeStyles.set(id, {
+            fill: el("boxFill").value,
+            stroke: el("boxStroke").value,
+            text: el("boxText").value
+          });
         });
       }
 
-      if (selectedType === "line" && selectedLineKey) {
-        const current = connectorStyles.get(selectedLineKey) || getDefaultConnectorStyle();
+      if (selectedType === "line" && selectedLineKeys.size) {
+        selectedLineKeys.forEach(key => {
+          const current = connectorStyles.get(key) || getDefaultConnectorStyle();
 
-        connectorStyles.set(selectedLineKey, {
-          ...current,
-          stroke: el("lineStroke").value,
-          style: el("lineStyle").value,
-          parentSide: el("parentSide").value,
-          childSide: el("childSide").value
+          connectorStyles.set(key, {
+            ...current,
+            stroke: el("lineStroke").value,
+            style: el("lineStyle").value,
+            parentSide: el("parentSide").value,
+            childSide: el("childSide").value
+          });
         });
       }
 
@@ -1393,7 +1435,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       path.setAttribute("class", "line");
 
-      if (options.connectorKey && selectedType === "line" && selectedLineKey === options.connectorKey) {
+      if (options.connectorKey && selectedType === "line" && selectedLineKeys.has(options.connectorKey)) {
         path.classList.add("selected-line");
       }
 
@@ -1416,14 +1458,14 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         editMode &&
         options.connectorKey &&
         selectedType === "line" &&
-        selectedLineKey === options.connectorKey
+        selectedLineKeys.has(options.connectorKey)
           ? "grab"
           : "pointer";
 
       if (options.clickHandler) {
         path.addEventListener("click", event => {
           event.stopPropagation();
-          options.clickHandler();
+          options.clickHandler(event);
         });
       }
 
@@ -1431,7 +1473,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         options.connectorKey &&
         editMode &&
         selectedType === "line" &&
-        selectedLineKey === options.connectorKey
+        selectedLineKeys.has(options.connectorKey)
       ) {
         path.addEventListener("pointerdown", event => {
           event.stopPropagation();
@@ -1447,7 +1489,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         return;
       }
 
-      if (selectedType !== "line" || selectedLineKey !== connectorKey) {
+      if (selectedType !== "line" || !selectedLineKeys.has(connectorKey)) {
         return;
       }
 
@@ -1498,7 +1540,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
             stroke: style.stroke,
             style: style.style,
             connectorKey,
-            clickHandler: () => selectLine(node, child)
+            clickHandler: event => selectLine(node, child, event.shiftKey)
           }
         );
 
@@ -1525,7 +1567,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
               stroke: style.stroke,
               style: style.style,
               connectorKey,
-              clickHandler: () => selectLine(node, child)
+              clickHandler: event => selectLine(node, child, event.shiftKey)
             }
           );
 
@@ -1550,7 +1592,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
       group.setAttribute("data-node-id", node.id);
-      group.style.cursor = editMode && selectedType === "node" && selectedNodeId === node.id
+      group.style.cursor = editMode && selectedType === "node" && selectedNodeIds.has(node.id)
         ? "move"
         : "pointer";
 
@@ -1565,7 +1607,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       rect.setAttribute("stroke", style.stroke);
       group.appendChild(rect);
 
-      if (selectedType === "node" && selectedNodeId === node.id) {
+      if (selectedType === "node" && selectedNodeIds.has(node.id)) {
         const highlight = document.createElementNS("http://www.w3.org/2000/svg", "rect");
 
         highlight.setAttribute("class", "selection-outline");
@@ -1649,10 +1691,10 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       group.addEventListener("click", event => {
         event.stopPropagation();
-        selectNode(node);
+        selectNode(node, event.shiftKey);
       });
 
-      if (editMode && selectedType === "node" && selectedNodeId === node.id) {
+      if (editMode && selectedType === "node" && selectedNodeIds.has(node.id)) {
         group.addEventListener("pointerdown", event => {
           if (event.target.classList.contains("resize-handle")) {
             return;
@@ -1878,12 +1920,29 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       const start = getChartLocalPoint(event, svg, chartGroup);
 
+      const idsToDrag = selectedNodeIds.has(node.id)
+        ? Array.from(selectedNodeIds)
+        : [node.id];
+
+      const originals = idsToDrag.map(id => {
+        const saved = manualLayout.get(id) || {};
+        const targetNode = lastDrawnNodesById.get(id);
+
+        return {
+          id,
+          boxX: Number.isFinite(saved.boxX) ? saved.boxX : targetNode?.boxX ?? 0,
+          boxY: Number.isFinite(saved.boxY) ? saved.boxY : targetNode?.boxY ?? 0,
+          boxW: Number.isFinite(saved.boxW) ? saved.boxW : targetNode?.boxW ?? options.boxW,
+          boxH: Number.isFinite(saved.boxH) ? saved.boxH : targetNode?.boxH ?? options.boxH
+        };
+      });
+
       activeDrag = {
         nodeId: node.id,
+        nodeIds: idsToDrag,
+        originals,
         startX: start.x,
-        startY: start.y,
-        originalBoxX: node.boxX,
-        originalBoxY: node.boxY
+        startY: start.y
       };
 
       try {
@@ -2002,18 +2061,28 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       }
 
       const point = getChartLocalPoint(event, svg, chartGroup);
-      const nodeId = activeDrag ? activeDrag.nodeId : activeResize.nodeId;
-      const saved = manualLayout.get(nodeId) || {};
 
       if (activeDrag) {
-        manualLayout.set(nodeId, {
-          ...saved,
-          boxX: activeDrag.originalBoxX + point.x - activeDrag.startX,
-          boxY: activeDrag.originalBoxY + point.y - activeDrag.startY
+        const dx = point.x - activeDrag.startX;
+        const dy = point.y - activeDrag.startY;
+
+        activeDrag.originals.forEach(original => {
+          const saved = manualLayout.get(original.id) || {};
+
+          manualLayout.set(original.id, {
+            ...saved,
+            boxX: original.boxX + dx,
+            boxY: original.boxY + dy,
+            boxW: original.boxW,
+            boxH: original.boxH
+          });
         });
       }
 
       if (activeResize) {
+        const nodeId = activeResize.nodeId;
+        const saved = manualLayout.get(nodeId) || {};
+
         manualLayout.set(nodeId, {
           ...saved,
           boxW: Math.max(90, activeResize.originalBoxW + point.x - activeResize.startX),
@@ -2121,6 +2190,8 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       }
 
       applyManualLayout(nodes, options);
+
+      lastDrawnNodesById = new Map(nodes.map(node => [node.id, node]));
 
       const rawWidth = Math.max(layoutRoot.subtreeWidth, boxW);
       const rawHeight = Math.max(layoutRoot.subtreeHeight, boxH);
