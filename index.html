@@ -1288,72 +1288,88 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       return { x: node.boxX + boxW / 2, y: node.boxY + boxH, side: "bottom" };
     }
 
-    function buildElbowPath(start, end, style = {}) {
+    function getSideVector(side) {
+      if (side === "top") return { dx: 0, dy: -1 };
+      if (side === "bottom") return { dx: 0, dy: 1 };
+      if (side === "left") return { dx: -1, dy: 0 };
+      if (side === "right") return { dx: 1, dy: 0 };
+      return { dx: 0, dy: 1 };
+    }
+
+    function projectPointFromSide(point, distance) {
+      const vector = getSideVector(point.side);
+      return {
+        x: point.x + vector.dx * distance,
+        y: point.y + vector.dy * distance,
+        side: point.side
+      };
+    }
+
+    function computeConnectorRoute(start, end, style = {}) {
       const offsetX = Number(style.offsetX) || 0;
       const offsetY = Number(style.offsetY) || 0;
 
       /*
-        Connector routing:
-        Use a bus line in the whitespace just outside the child box, rather than a
-        simple midpoint route. This avoids connector lines running behind boxes in
-        dense charts.
+        Readability routing:
+        - Add a short "stem" out of each box so connectors do not hug box edges.
+        - Route the main bus line in whitespace near the destination.
+        - Fall back toward the midpoint if the source and destination are very close.
       */
       const clearance = 18;
+      const stem = 12;
+
+      const startOuter = projectPointFromSide(start, stem);
+      const endOuter = projectPointFromSide(end, stem);
 
       if (start.side === "bottom" || start.side === "top") {
-        let busY;
+        let busY = endOuter.y + offsetY;
 
-        if (end.y >= start.y) {
-          busY = end.y - clearance + offsetY;
-          if (busY <= start.y + clearance) {
-            busY = start.y + (end.y - start.y) / 2 + offsetY;
-          }
-        } else {
-          busY = end.y + clearance + offsetY;
-          if (busY >= start.y - clearance) {
-            busY = start.y + (end.y - start.y) / 2 + offsetY;
-          }
+        const tooCloseDown = busY <= startOuter.y + clearance;
+        const tooCloseUp = busY >= startOuter.y - clearance;
+
+        if ((endOuter.y >= startOuter.y && tooCloseDown) || (endOuter.y < startOuter.y && tooCloseUp)) {
+          busY = startOuter.y + (endOuter.y - startOuter.y) / 2 + offsetY;
         }
 
-        return `
-          M ${start.x} ${start.y}
-          V ${busY}
-          H ${end.x}
-          V ${end.y}
-        `;
+        return {
+          path: `
+            M ${start.x} ${start.y}
+            L ${startOuter.x} ${startOuter.y}
+            V ${busY}
+            H ${endOuter.x}
+            V ${endOuter.y}
+            L ${end.x} ${end.y}
+          `,
+          handleX: (startOuter.x + endOuter.x) / 2,
+          handleY: busY
+        };
       }
 
-      if (start.side === "left" || start.side === "right") {
-        let busX;
+      let busX = endOuter.x + offsetX;
 
-        if (end.x >= start.x) {
-          busX = end.x - clearance + offsetX;
-          if (busX <= start.x + clearance) {
-            busX = start.x + (end.x - start.x) / 2 + offsetX;
-          }
-        } else {
-          busX = end.x + clearance + offsetX;
-          if (busX >= start.x - clearance) {
-            busX = start.x + (end.x - start.x) / 2 + offsetX;
-          }
-        }
+      const tooCloseRight = busX <= startOuter.x + clearance;
+      const tooCloseLeft = busX >= startOuter.x - clearance;
 
-        return `
+      if ((endOuter.x >= startOuter.x && tooCloseRight) || (endOuter.x < startOuter.x && tooCloseLeft)) {
+        busX = startOuter.x + (endOuter.x - startOuter.x) / 2 + offsetX;
+      }
+
+      return {
+        path: `
           M ${start.x} ${start.y}
+          L ${startOuter.x} ${startOuter.y}
           H ${busX}
-          V ${end.y}
-          H ${end.x}
-        `;
-      }
+          V ${endOuter.y}
+          H ${endOuter.x}
+          L ${end.x} ${end.y}
+        `,
+        handleX: busX,
+        handleY: (startOuter.y + endOuter.y) / 2
+      };
+    }
 
-      const busY = end.y - clearance + offsetY;
-
-      return `
-        M ${start.x} ${start.y}
-        V ${busY}
-        H ${end.x}
-        V ${end.y}
-      `;
+    function buildElbowPath(start, end, style = {}) {
+      return computeConnectorRoute(start, end, style).path;
     }
 
     function clearSelection() {
@@ -1631,41 +1647,9 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       if (!editMode) return;
       if (selectedType !== "line" || !selectedLineKeys.has(connectorKey)) return;
 
-      const offsetX = Number(style.offsetX) || 0;
-      const offsetY = Number(style.offsetY) || 0;
-
-      let handleX;
-      let handleY;
-
-      const clearance = 18;
-
-      if (start.side === "left" || start.side === "right") {
-        if (end.x >= start.x) {
-          handleX = end.x - clearance + offsetX;
-          if (handleX <= start.x + clearance) {
-            handleX = start.x + (end.x - start.x) / 2 + offsetX;
-          }
-        } else {
-          handleX = end.x + clearance + offsetX;
-          if (handleX >= start.x - clearance) {
-            handleX = start.x + (end.x - start.x) / 2 + offsetX;
-          }
-        }
-        handleY = start.y + (end.y - start.y) / 2;
-      } else {
-        handleX = start.x + (end.x - start.x) / 2;
-        if (end.y >= start.y) {
-          handleY = end.y - clearance + offsetY;
-          if (handleY <= start.y + clearance) {
-            handleY = start.y + (end.y - start.y) / 2 + offsetY;
-          }
-        } else {
-          handleY = end.y + clearance + offsetY;
-          if (handleY >= start.y - clearance) {
-            handleY = start.y + (end.y - start.y) / 2 + offsetY;
-          }
-        }
-      }
+      const route = computeConnectorRoute(start, end, style);
+      const handleX = route.handleX;
+      const handleY = route.handleY;
 
       const handle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
       handle.setAttribute("cx", handleX);
