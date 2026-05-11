@@ -1267,33 +1267,65 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       const offsetX = Number(style.offsetX) || 0;
       const offsetY = Number(style.offsetY) || 0;
 
+      /*
+        Connector routing:
+        Use a bus line in the whitespace just outside the child box, rather than a
+        simple midpoint route. This avoids connector lines running behind boxes in
+        dense charts.
+      */
+      const clearance = 18;
+
       if (start.side === "bottom" || start.side === "top") {
-        const midY = start.y + (end.y - start.y) / 2 + offsetY;
+        let busY;
+
+        if (end.y >= start.y) {
+          busY = end.y - clearance + offsetY;
+          if (busY <= start.y + clearance) {
+            busY = start.y + (end.y - start.y) / 2 + offsetY;
+          }
+        } else {
+          busY = end.y + clearance + offsetY;
+          if (busY >= start.y - clearance) {
+            busY = start.y + (end.y - start.y) / 2 + offsetY;
+          }
+        }
 
         return `
           M ${start.x} ${start.y}
-          V ${midY}
+          V ${busY}
           H ${end.x}
           V ${end.y}
         `;
       }
 
       if (start.side === "left" || start.side === "right") {
-        const midX = start.x + (end.x - start.x) / 2 + offsetX;
+        let busX;
+
+        if (end.x >= start.x) {
+          busX = end.x - clearance + offsetX;
+          if (busX <= start.x + clearance) {
+            busX = start.x + (end.x - start.x) / 2 + offsetX;
+          }
+        } else {
+          busX = end.x + clearance + offsetX;
+          if (busX >= start.x - clearance) {
+            busX = start.x + (end.x - start.x) / 2 + offsetX;
+          }
+        }
 
         return `
           M ${start.x} ${start.y}
-          H ${midX}
+          H ${busX}
           V ${end.y}
           H ${end.x}
         `;
       }
 
-      const midY = start.y + (end.y - start.y) / 2 + offsetY;
+      const busY = end.y - clearance + offsetY;
 
       return `
         M ${start.x} ${start.y}
-        V ${midY}
+        V ${busY}
         H ${end.x}
         V ${end.y}
       `;
@@ -1489,12 +1521,34 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       let handleX;
       let handleY;
 
+      const clearance = 18;
+
       if (start.side === "left" || start.side === "right") {
-        handleX = start.x + (end.x - start.x) / 2 + offsetX;
+        if (end.x >= start.x) {
+          handleX = end.x - clearance + offsetX;
+          if (handleX <= start.x + clearance) {
+            handleX = start.x + (end.x - start.x) / 2 + offsetX;
+          }
+        } else {
+          handleX = end.x + clearance + offsetX;
+          if (handleX >= start.x - clearance) {
+            handleX = start.x + (end.x - start.x) / 2 + offsetX;
+          }
+        }
         handleY = start.y + (end.y - start.y) / 2;
       } else {
         handleX = start.x + (end.x - start.x) / 2;
-        handleY = start.y + (end.y - start.y) / 2 + offsetY;
+        if (end.y >= start.y) {
+          handleY = end.y - clearance + offsetY;
+          if (handleY <= start.y + clearance) {
+            handleY = start.y + (end.y - start.y) / 2 + offsetY;
+          }
+        } else {
+          handleY = end.y + clearance + offsetY;
+          if (handleY >= start.y - clearance) {
+            handleY = start.y + (end.y - start.y) / 2 + offsetY;
+          }
+        }
       }
 
       const handle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
