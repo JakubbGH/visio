@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>CSV Org Chart Builder</title>
+  <title>CSV Org Chart Builder - Split by Area</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     :root {
@@ -259,7 +259,6 @@
       color: var(--primary-dark);
     }
 
-
     .file-tabs {
       display: flex;
       flex-wrap: wrap;
@@ -433,7 +432,7 @@
         <p class="eyebrow">Browser-only tool</p>
         <h1>CSV Org Chart Builder</h1>
         <p class="lead">
-          Upload your CSV, generate a readable org chart, adjust the layout visually, customise styles, then export as SVG or PNG.
+          Upload your CSV, generate a readable org chart split by Area, adjust the layout visually, customise styles, then export as SVG or PNG.
         </p>
       </div>
       <div class="badge">Editable page-fit layout</div>
@@ -454,7 +453,7 @@
         <label>Employee ID column<input id="idCol" value="Employee ID"></label>
         <label>Name column<input id="nameCol" value="Name"></label>
         <label>Manager ID column<input id="managerCol" value="Manager ID"></label>
-        <label>Building column<input id="buildingCol" value="Building"></label>
+        <label>Area column used for chart split<input id="buildingCol" value="Area"></label>
       </div>
 
       <div class="grid" style="margin-top: 14px;">
@@ -462,7 +461,7 @@
         <label>Type column<input id="typeCol" value="Type of Work"></label>
         <label>Area column<input id="areaCol" value="Area"></label>
         <label>
-          Building chart in selected file
+          Area chart in selected file
           <select id="buildingSelect" disabled>
             <option>Upload one or more CSV files first</option>
           </select>
@@ -478,7 +477,7 @@
           <label class="toggle-pill"><input id="showJobRole" type="checkbox" checked>Job Role</label>
           <label class="toggle-pill"><input id="showTypeOfWork" type="checkbox" checked>Type of Work</label>
           <label class="toggle-pill"><input id="showArea" type="checkbox" checked>Area</label>
-          <label class="toggle-pill"><input id="showBuilding" type="checkbox">Building</label>
+          <label class="toggle-pill"><input id="showBuilding" type="checkbox">Split value</label>
           <label class="toggle-pill"><input id="showManagerId" type="checkbox">Manager ID</label>
         </div>
       </div>
@@ -532,7 +531,7 @@
       </div>
 
       <p class="hint">
-        Layout editing and style customisation are in the left panel beside the preview. Hold Shift while clicking boxes or connectors to select multiple. Multiple uploaded CSV files are split into separate editable charts by file and Building value.
+        Layout editing and style customisation are in the left panel beside the preview. Hold Shift while clicking boxes or connectors to select multiple. Multiple uploaded CSV files are split into separate editable chart tabs by Area value.
       </p>
 
       <p id="errorBox" class="error"></p>
@@ -859,30 +858,29 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       const tabs = el("fileTabs");
       tabs.innerHTML = "";
 
-      if (!uploadedSources.length) {
+      if (!chartDataSets.length) {
         tabs.hidden = true;
         return;
       }
 
       tabs.hidden = false;
 
-      uploadedSources.forEach(source => {
-        const chartCount = chartDataSets.filter(chart => chart.sourceId === source.id).length;
+      chartDataSets.forEach(chart => {
         const button = document.createElement("button");
 
         button.type = "button";
-        button.className = source.id === activeSourceId ? "file-tab active" : "file-tab";
-        button.innerHTML = `${source.fileStem} <span class="file-tab-count">${chartCount} chart${chartCount === 1 ? "" : "s"}</span>`;
+        button.className = chart.id === activeChartId ? "file-tab active" : "file-tab";
+        button.innerHTML = `
+          <span>${chart.building}</span>
+          <span class="file-tab-count">${chart.fileStem}</span>
+        `;
+
+        button.title = `${chart.fileName} — ${chart.building}`;
 
         button.addEventListener("click", () => {
-          activeSourceId = source.id;
-          const chartsForSource = getChartsForActiveSource();
-
-          if (chartsForSource.length) {
-            setActiveChart(chartsForSource[0].id);
-          }
-
-          updateBuildingSelect();
+          activeSourceId = chart.sourceId;
+          setActiveChart(chart.id);
+          updateBuildingSelect(chart.id);
           drawChart();
         });
 
@@ -891,26 +889,26 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
     }
 
     function rebuildChartDataSets(preferredChartId = "") {
-      const buildingCol = el("buildingCol").value;
+      const splitCol = el("buildingCol").value;
       const nextCharts = [];
 
       uploadedSources.forEach(source => {
         const grouped = new Map();
 
         source.rows.forEach(row => {
-          const building = cleanText(row[buildingCol]) || "No Building";
+          const splitValue = cleanText(row[splitCol]) || "No Area";
 
-          if (!grouped.has(building)) {
-            grouped.set(building, []);
+          if (!grouped.has(splitValue)) {
+            grouped.set(splitValue, []);
           }
 
-          grouped.get(building).push(row);
+          grouped.get(splitValue).push(row);
         });
 
         Array.from(grouped.entries())
           .sort((a, b) => a[0].localeCompare(b[0]))
-          .forEach(([building, rows]) => {
-            const id = `${source.id}__${safeName(building)}`;
+          .forEach(([splitValue, rows]) => {
+            const id = `${source.id}__${safeName(splitValue)}`;
             const state = chartStateStore.get(id) || makeEmptyChartState();
 
             chartStateStore.set(id, state);
@@ -920,8 +918,8 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
               fileName: source.fileName,
               fileStem: source.fileStem,
               sourceId: source.id,
-              building,
-              label: `${source.fileStem} — ${building}`,
+              building: splitValue,
+              label: `${source.fileStem} — ${splitValue}`,
               rows,
               state
             });
@@ -1192,7 +1190,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       const titleCol = el("titleCol").value;
       const typeCol = el("typeCol").value;
       const areaCol = el("areaCol").value;
-      const buildingCol = el("buildingCol").value;
+      const splitCol = el("buildingCol").value;
 
       const fields = [];
 
@@ -1201,7 +1199,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       if (el("showJobRole").checked) fields.push({ text: cleanText(node.row[titleCol]), cls: "meta" });
       if (el("showTypeOfWork").checked) fields.push({ text: cleanText(node.row[typeCol]), cls: "meta" });
       if (el("showArea").checked) fields.push({ text: cleanText(node.row[areaCol]), cls: "meta" });
-      if (el("showBuilding").checked) fields.push({ text: cleanText(node.row[buildingCol]), cls: "meta" });
+      if (el("showBuilding").checked) fields.push({ text: cleanText(node.row[splitCol]), cls: "meta" });
       if (el("showManagerId").checked) fields.push({ text: cleanText(node.row[managerCol]), cls: "meta" });
 
       return fields.filter(field => field.text).slice(0, 5);
@@ -1669,12 +1667,6 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
           event.stopPropagation();
 
-          /*
-            Group-drag fix:
-            - If this node is already selected, start a drag using the whole selectedNodeIds set.
-            - If this node is not selected, do not redraw/select inside pointerdown. Let the click handler
-              select it normally. This avoids redrawing the SVG under the pointer before a drag starts.
-          */
           if (selectedType === "node" && selectedNodeIds.has(node.id)) {
             startDragNode(event, node, options);
           }
@@ -1879,9 +1871,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       try {
         svg.setPointerCapture(event.pointerId);
-      } catch (error) {
-        // ignore
-      }
+      } catch (error) {}
     }
 
     function startResizeNode(event, node, options) {
@@ -1903,9 +1893,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       try {
         svg.setPointerCapture(event.pointerId);
-      } catch (error) {
-        // ignore
-      }
+      } catch (error) {}
     }
 
     function startDragLine(event, connectorKey) {
@@ -1928,9 +1916,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       try {
         svg.setPointerCapture(event.pointerId);
-      } catch (error) {
-        // ignore
-      }
+      } catch (error) {}
     }
 
     function updateActiveLineDrag(event) {
@@ -2027,9 +2013,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       try {
         el("chartSvg").releasePointerCapture(event.pointerId);
-      } catch (error) {
-        // ignore
-      }
+      } catch (error) {}
     }
 
     function drawChart() {
@@ -2043,11 +2027,8 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         return;
       }
 
-      const selectedBuilding = activeChart.building;
-      const rows = allRows;
-
       const page = getPageConfig();
-      const { nodes, roots } = buildHierarchy(rows);
+      const { nodes, roots } = buildHierarchy(allRows);
 
       if (!nodes.length) {
         errorBox.textContent = "No valid rows found for this chart.";
@@ -2236,6 +2217,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       el("stats").innerHTML = `
         <span class="pill">${activeChart.fileStem}</span>
+        <span class="pill">Area: ${activeChart.building}</span>
         <span class="pill">${nodes.length} people</span>
         <span class="pill">${roots.length} top-level node(s)</span>
         <span class="pill">${page.label}</span>
