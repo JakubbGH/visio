@@ -568,8 +568,16 @@
               Reset layout
             </button>
 
+            <button id="addManualLineBtn" class="secondary full-width" type="button" disabled>
+              Add manual line between 2 boxes
+            </button>
+
+            <button id="removeManualLineBtn" class="secondary full-width" type="button" disabled>
+              Remove selected manual line
+            </button>
+
             <p class="sidebar-hint">
-              Turn edit mode on, then select a box or connector. Hold Shift to select multiple. Drag any selected box to move selected boxes together.
+              Turn edit mode on, then select a box or connector. Hold Shift to select multiple. Drag any selected box to move selected boxes together. To add a manual line, select exactly two boxes, then click Add manual line.
             </p>
           </div>
 
@@ -685,6 +693,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
 
     let nodeStyles = new Map();
     let connectorStyles = new Map();
+    let manualLinks = new Set();
 
     const BOX_PRESETS = {
       green: { fill: "#ffffff", stroke: "#00843D", text: "#172033" },
@@ -794,6 +803,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         manualLayout: new Map(),
         nodeStyles: new Map(),
         connectorStyles: new Map(),
+        manualLinks: new Set(),
         lastLayoutSignature: ""
       };
     }
@@ -811,6 +821,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         manualLayout = new Map();
         nodeStyles = new Map();
         connectorStyles = new Map();
+        manualLinks = new Set();
         lastLayoutSignature = "";
         return;
       }
@@ -822,6 +833,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       manualLayout = chart.state.manualLayout;
       nodeStyles = chart.state.nodeStyles;
       connectorStyles = chart.state.connectorStyles;
+      manualLinks = chart.state.manualLinks || new Set();
       lastLayoutSignature = chart.state.lastLayoutSignature || "";
 
       selectedType = "";
@@ -841,6 +853,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       chart.state.manualLayout = manualLayout;
       chart.state.nodeStyles = nodeStyles;
       chart.state.connectorStyles = connectorStyles;
+      chart.state.manualLinks = manualLinks;
       chart.state.lastLayoutSignature = lastLayoutSignature;
       chartStateStore.set(chart.id, chart.state);
     }
@@ -1241,8 +1254,20 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       return `${parent.id}=>${child.id}`;
     }
 
+    function getManualConnectorKey(fromId, toId) {
+      return `manual:${fromId}=>${toId}`;
+    }
+
+    function isManualConnectorKey(key) {
+      return String(key || "").startsWith("manual:");
+    }
+
     function getConnectorStyle(parent, child) {
       return connectorStyles.get(getConnectorKey(parent, child)) || getDefaultConnectorStyle();
+    }
+
+    function getConnectorStyleByKey(key) {
+      return connectorStyles.get(key) || getDefaultConnectorStyle();
     }
 
     function getStrokeDashArray(style) {
@@ -1353,6 +1378,14 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       el("lineControls").hidden = !hasLine;
       el("applyStyleBtn").disabled = !hasNode && !hasLine;
 
+      if (el("addManualLineBtn")) {
+        el("addManualLineBtn").disabled = !(hasNode && nodeCount === 2);
+      }
+
+      if (el("removeManualLineBtn")) {
+        el("removeManualLineBtn").disabled = !(hasLine && Array.from(selectedLineKeys).some(isManualConnectorKey));
+      }
+
       if (!hasNode && !hasLine) {
         el("selectionHint").textContent = editMode
           ? "Edit mode is on. Select a box or connector. Shift-click to select multiple."
@@ -1361,9 +1394,11 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       }
 
       if (hasNode) {
-        el("selectionHint").textContent = editMode
-          ? `${nodeCount} box${nodeCount === 1 ? "" : "es"} selected. Drag any selected box to move the group. Resize is single-box only.`
-          : `${nodeCount} box${nodeCount === 1 ? "" : "es"} selected. Adjust colours below, then apply.`;
+        el("selectionHint").textContent = nodeCount === 2
+          ? "2 boxes selected. Click Add manual line to connect them, or adjust colours below and apply."
+          : editMode
+            ? `${nodeCount} box${nodeCount === 1 ? "" : "es"} selected. Drag any selected box to move the group. Resize is single-box only.`
+            : `${nodeCount} box${nodeCount === 1 ? "" : "es"} selected. Adjust colours below, then apply.`;
         return;
       }
 
@@ -1431,6 +1466,87 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       el("childSide").value = style.childSide;
 
       updateSelectionPanel();
+      drawChart();
+    }
+
+    function selectLineKey(key, additive = false) {
+      if (!additive) {
+        selectedLineKeys.clear();
+        selectedNodeIds.clear();
+      }
+
+      if (additive && selectedLineKeys.has(key)) {
+        selectedLineKeys.delete(key);
+      } else {
+        selectedLineKeys.add(key);
+      }
+
+      selectedNodeIds.clear();
+
+      selectedType = selectedLineKeys.size ? "line" : "";
+      selectedLineKey = selectedLineKeys.size ? Array.from(selectedLineKeys).at(-1) : "";
+      selectedNodeId = "";
+
+      const style = getConnectorStyleByKey(key);
+
+      el("lineStroke").value = style.stroke;
+      el("lineStyle").value = style.style;
+      el("parentSide").value = style.parentSide;
+      el("childSide").value = style.childSide;
+
+      updateSelectionPanel();
+      drawChart();
+    }
+
+    function addManualLineBetweenSelectedBoxes() {
+      if (selectedType !== "node" || selectedNodeIds.size !== 2) {
+        return;
+      }
+
+      const [fromId, toId] = Array.from(selectedNodeIds);
+      if (!fromId || !toId || fromId === toId) {
+        return;
+      }
+
+      const key = getManualConnectorKey(fromId, toId);
+      manualLinks.add(key);
+
+      if (!connectorStyles.has(key)) {
+        connectorStyles.set(key, {
+          ...getDefaultConnectorStyle(),
+          parentSide: "bottom",
+          childSide: "top"
+        });
+      }
+
+      selectedNodeIds.clear();
+      selectedLineKeys.clear();
+      selectedLineKeys.add(key);
+      selectedType = "line";
+      selectedLineKey = key;
+      selectedNodeId = "";
+
+      drawChart();
+    }
+
+    function removeSelectedManualLines() {
+      if (selectedType !== "line" || !selectedLineKeys.size) {
+        return;
+      }
+
+      Array.from(selectedLineKeys).forEach(key => {
+        if (isManualConnectorKey(key)) {
+          manualLinks.delete(key);
+          connectorStyles.delete(key);
+          selectedLineKeys.delete(key);
+        }
+      });
+
+      if (!selectedLineKeys.size) {
+        selectedType = "";
+        selectedLineKey = "";
+      }
+
       drawChart();
     }
 
@@ -1564,6 +1680,37 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       });
 
       parent.appendChild(handle);
+    }
+
+    function parseManualConnectorKey(key) {
+      const match = String(key || "").match(/^manual:(.+)=>(.+)$/);
+      if (!match) return null;
+      return { fromId: match[1], toId: match[2] };
+    }
+
+    function drawManualConnectors(layer, options) {
+      manualLinks.forEach(key => {
+        const parsed = parseManualConnectorKey(key);
+        if (!parsed) return;
+
+        const fromNode = lastDrawnNodesById.get(parsed.fromId);
+        const toNode = lastDrawnNodesById.get(parsed.toId);
+
+        if (!fromNode || !toNode) return;
+
+        const style = getConnectorStyleByKey(key);
+        const start = getConnectionPoint(fromNode, style.parentSide, options);
+        const end = getConnectionPoint(toNode, style.childSide, options);
+
+        drawPath(layer, buildElbowPath(start, end, style), {
+          stroke: style.stroke,
+          style: style.style,
+          connectorKey: key,
+          clickHandler: event => selectLineKey(key, event.shiftKey)
+        });
+
+        drawLineHandle(layer, start, end, style, key);
+      });
     }
 
     function drawManagerConnectors(node, layer, options) {
@@ -2291,6 +2438,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       chartGroup.appendChild(nodeLayer);
 
       renderTree(layoutRoot, connectorLayer, nodeLayer, options);
+      drawManualConnectors(connectorLayer, options);
 
       el("stats").innerHTML = `
         <span class="pill">${activeChart.fileStem}</span>
@@ -2310,6 +2458,8 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       el("downloadAllPngBtn").disabled = chartDataSets.length === 0;
       el("editModeBtn").disabled = false;
       el("resetLayoutBtn").disabled = false;
+      el("addManualLineBtn").disabled = !(selectedType === "node" && selectedNodeIds.size === 2);
+      el("removeManualLineBtn").disabled = !(selectedType === "line" && Array.from(selectedLineKeys).some(isManualConnectorKey));
 
       persistActiveChartState();
       updateSelectionPanel();
@@ -2463,6 +2613,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       manualLayout = new Map();
       nodeStyles = new Map();
       connectorStyles = new Map();
+      manualLinks = new Set();
       lastLayoutSignature = "";
 
       try {
@@ -2574,6 +2725,9 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       el("boxStroke").value = preset.stroke;
       el("boxText").value = preset.text;
     });
+
+    el("addManualLineBtn").addEventListener("click", addManualLineBetweenSelectedBoxes);
+    el("removeManualLineBtn").addEventListener("click", removeSelectedManualLines);
 
     el("applyStyleBtn").addEventListener("click", applyCurrentStyle);
     el("clearSelectionBtn").addEventListener("click", clearSelection);
