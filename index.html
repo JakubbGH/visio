@@ -5169,3 +5169,2542 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
   </script>
 </body>
 </html>
+
+rather than just duplicating the application, make bulk file uploads possible and then split the charts into tabs for each file
+
+Understood. I’ll change the structure so the app remains one application: bulk-upload CSVs once, then switch between uploaded files using tabs, with the chart selector showing only charts/buildings for the active file.
+
+Thought for a couple of seconds
+Done — here is the version with bulk CSV upload + file tabs:
+
+Download the file-tabs version
+
+What changed:
+
+You can upload multiple CSV files in one go.
+
+The app now shows a tab for each uploaded file.
+
+The building/chart dropdown only shows charts for the selected file tab.
+
+Edits remain separate per file/building chart.
+
+“Download all” still exports every generated chart across all uploaded files.
+
+I syntax-checked the JavaScript. I have not run it against your real CSVs in-browser, so the next thing to verify is whether the tab switching and per-chart edit persistence behave exactly as needed with your data. 
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>CSV Org Chart Builder</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      --bg: #eef3f7;
+      --card: #ffffff;
+      --text: #122033;
+      --muted: #687789;
+      --border: #d8e1ea;
+      --primary: #007a3d;
+      --primary-dark: #005f2f;
+      --primary-soft: #e6f4ed;
+      --danger: #b42318;
+      --warn-bg: #fff8ed;
+      --warn-border: #f5c98b;
+      --shadow-sm: 0 4px 14px rgba(15, 23, 42, 0.06);
+      --shadow-md: 0 18px 42px rgba(15, 23, 42, 0.10);
+      --radius-lg: 24px;
+      --radius-md: 16px;
+      --radius-sm: 12px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, Helvetica, sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(0, 122, 61, 0.10), transparent 34rem),
+        linear-gradient(180deg, #f8fbfd 0%, var(--bg) 100%);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .shell {
+      width: min(1240px, calc(100% - 32px));
+      margin: 34px auto;
+    }
+
+    .hero {
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      align-items: flex-start;
+      margin-bottom: 24px;
+      padding: 4px 2px;
+    }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(34px, 5vw, 56px);
+      line-height: 0.95;
+      letter-spacing: -0.045em;
+    }
+
+    h2 {
+      margin: 0 0 16px;
+      font-size: 22px;
+      letter-spacing: -0.025em;
+    }
+
+    h3 {
+      margin: 0 0 12px;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+    }
+
+    h4 {
+      margin: 0 0 12px;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #334155;
+    }
+
+    .lead {
+      max-width: 780px;
+      margin: 16px 0 0;
+      color: #536173;
+      font-size: 18px;
+      line-height: 1.55;
+    }
+
+    .badge {
+      white-space: nowrap;
+      border: 1px solid rgba(0, 122, 61, 0.20);
+      background: var(--primary-soft);
+      border-radius: 999px;
+      padding: 10px 15px;
+      color: var(--primary-dark);
+      font-size: 13px;
+      font-weight: 800;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid rgba(216, 225, 234, 0.95);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      box-shadow: var(--shadow-md);
+      margin-bottom: 22px;
+      backdrop-filter: blur(10px);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+
+    label {
+      display: block;
+      font-weight: 750;
+      font-size: 13px;
+      color: #263548;
+    }
+
+    input,
+    select {
+      width: 100%;
+      margin-top: 8px;
+      border: 1px solid #cbd7e2;
+      border-radius: var(--radius-sm);
+      padding: 11px 12px;
+      font-size: 14px;
+      background: #ffffff;
+      color: var(--text);
+      outline: none;
+    }
+
+    input:focus,
+    select:focus {
+      border-color: rgba(0, 122, 61, 0.75);
+      box-shadow: 0 0 0 4px rgba(0, 122, 61, 0.12);
+    }
+
+    input[type="file"] {
+      padding: 16px;
+      background: linear-gradient(180deg, #fbfdff 0%, #f4f8fb 100%);
+      border-style: dashed;
+      border-width: 1.5px;
+      cursor: pointer;
+    }
+
+    input[type="color"] {
+      height: 44px;
+      padding: 5px;
+      cursor: pointer;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    button {
+      appearance: none;
+      border: 0;
+      background: linear-gradient(180deg, var(--primary) 0%, var(--primary-dark) 100%);
+      color: #ffffff;
+      border-radius: 999px;
+      padding: 11px 17px;
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+      cursor: pointer;
+      box-shadow: 0 8px 18px rgba(0, 122, 61, 0.20);
+    }
+
+    button:hover { transform: translateY(-1px); }
+
+    button.secondary {
+      background: #ffffff;
+      color: #1f2f45;
+      border: 1px solid #d7e1eb;
+      box-shadow: var(--shadow-sm);
+    }
+
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .hint {
+      display: block;
+      margin-top: 7px;
+      font-size: 12.5px;
+      line-height: 1.4;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .warning {
+      border-radius: var(--radius-md);
+      padding: 15px 16px;
+      background: var(--warn-bg);
+      border: 1px solid var(--warn-border);
+      color: #7c3e10;
+      line-height: 1.5;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .error {
+      color: var(--danger);
+      font-weight: 750;
+      white-space: pre-wrap;
+    }
+
+    .toggle-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .toggle-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--border);
+      background: #ffffff;
+      border-radius: 999px;
+      padding: 9px 13px;
+      font-size: 13px;
+      font-weight: 750;
+      color: #334155;
+      cursor: pointer;
+      user-select: none;
+      box-shadow: 0 3px 9px rgba(15, 23, 42, 0.04);
+    }
+
+    .toggle-pill input {
+      width: auto;
+      margin: 0;
+      accent-color: var(--primary);
+    }
+
+    .toggle-pill:has(input:checked) {
+      background: var(--primary-soft);
+      border-color: rgba(0, 122, 61, 0.55);
+      color: var(--primary-dark);
+    }
+
+
+    .file-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 18px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    .file-tab {
+      appearance: none;
+      border: 1px solid #d7e1eb;
+      background: #ffffff;
+      color: #1f2f45;
+      border-radius: 999px;
+      padding: 9px 13px;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .file-tab.active {
+      background: var(--primary-soft);
+      color: var(--primary-dark);
+      border-color: rgba(0, 122, 61, 0.55);
+      box-shadow: 0 8px 18px rgba(0, 122, 61, 0.12);
+    }
+
+    .file-tab-count {
+      opacity: 0.7;
+      font-weight: 700;
+    }
+
+    .preview-layout {
+      display: grid;
+      grid-template-columns: 292px minmax(0, 1fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .preview-sidebar {
+      position: sticky;
+      top: 16px;
+      border: 1px solid #d9e3ec;
+      border-radius: 22px;
+      background: linear-gradient(180deg, #ffffff 0%, #f7fafc 100%);
+      padding: 18px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .preview-sidebar label { margin-top: 13px; }
+
+    .sidebar-hint {
+      color: var(--muted);
+      font-size: 12.5px;
+      line-height: 1.45;
+      margin: 0 0 12px;
+    }
+
+    .sidebar-actions {
+      display: grid;
+      gap: 9px;
+      margin-top: 15px;
+    }
+
+    .sidebar-section {
+      border-top: 1px solid var(--border);
+      margin-top: 16px;
+      padding-top: 16px;
+    }
+
+    .full-width {
+      width: 100%;
+      margin-top: 8px;
+    }
+
+    #chartWrap {
+      overflow: auto;
+      max-height: 80vh;
+      border: 1px solid #d7e1eb;
+      border-radius: 22px;
+      background:
+        linear-gradient(90deg, rgba(148, 163, 184, 0.10) 1px, transparent 1px),
+        linear-gradient(rgba(148, 163, 184, 0.10) 1px, transparent 1px),
+        #f8fafc;
+      background-size: 22px 22px;
+      padding: 12px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.70);
+    }
+
+    #chartSvg {
+      display: block;
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.10);
+      touch-action: none;
+    }
+
+    .stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      color: var(--muted);
+      margin: 10px 0 18px;
+    }
+
+    .pill {
+      background: #ffffff;
+      border: 1px solid #dce6ef;
+      border-radius: 999px;
+      padding: 7px 11px;
+      font-size: 12.5px;
+      font-weight: 700;
+      color: #536173;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+    }
+
+    pre {
+      overflow-x: auto;
+      background: #111827;
+      color: #dbeafe;
+      border-radius: 16px;
+      padding: 18px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    code {
+      background: rgba(15, 23, 42, 0.07);
+      color: #0f172a;
+      padding: 2px 6px;
+      border-radius: 7px;
+    }
+
+    .warning code {
+      background: rgba(124, 62, 16, 0.10);
+      color: #7c3e10;
+    }
+
+    @media (max-width: 900px) {
+      .hero { display: block; }
+      .badge { display: inline-block; margin-top: 16px; }
+      .grid { grid-template-columns: repeat(2, 1fr); }
+      .preview-layout { grid-template-columns: 1fr; }
+      .preview-sidebar { position: static; }
+    }
+
+    @media (max-width: 560px) {
+      .shell { width: min(100% - 20px, 1240px); margin: 20px auto; }
+      .card { padding: 18px; border-radius: 20px; }
+      .grid { grid-template-columns: 1fr; }
+      .actions { display: grid; }
+      button { width: 100%; }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Browser-only tool</p>
+        <h1>CSV Org Chart Builder</h1>
+        <p class="lead">
+          Upload your CSV, generate a readable org chart, adjust the layout visually, customise styles, then export as SVG or PNG.
+        </p>
+      </div>
+      <div class="badge">Editable page-fit layout</div>
+    </section>
+
+    <section class="card warning">
+      <strong>Important:</strong>
+      A browser-only tool cannot create native <code>.vsdx</code> files.
+      This creates clean <code>.svg</code> and <code>.png</code> org charts sized to fit the page.
+    </section>
+
+    <section class="card">
+      <h2>1. Upload CSV</h2>
+
+      <input id="csvFile" type="file" accept=".csv" multiple>
+
+      <div id="fileTabs" class="file-tabs" hidden></div>
+
+      <div class="grid" style="margin-top: 18px;">
+        <label>Employee ID column<input id="idCol" value="Employee ID"></label>
+        <label>Name column<input id="nameCol" value="Name"></label>
+        <label>Manager ID column<input id="managerCol" value="Manager ID"></label>
+        <label>Building column<input id="buildingCol" value="Building"></label>
+      </div>
+
+      <div class="grid" style="margin-top: 14px;">
+        <label>Title / role column<input id="titleCol" value="Job Role"></label>
+        <label>Type column<input id="typeCol" value="Type of Work"></label>
+        <label>Area column<input id="areaCol" value="Area"></label>
+        <label>
+          Building chart in selected file
+          <select id="buildingSelect" disabled>
+            <option>Upload one or more CSV files first</option>
+          </select>
+        </label>
+      </div>
+
+      <div style="margin-top: 18px;">
+        <label>Show information on chart</label>
+
+        <div class="toggle-grid">
+          <label class="toggle-pill"><input id="showName" type="checkbox" checked>Name</label>
+          <label class="toggle-pill"><input id="showEmployeeId" type="checkbox">Employee ID</label>
+          <label class="toggle-pill"><input id="showJobRole" type="checkbox" checked>Job Role</label>
+          <label class="toggle-pill"><input id="showTypeOfWork" type="checkbox" checked>Type of Work</label>
+          <label class="toggle-pill"><input id="showArea" type="checkbox" checked>Area</label>
+          <label class="toggle-pill"><input id="showBuilding" type="checkbox">Building</label>
+          <label class="toggle-pill"><input id="showManagerId" type="checkbox">Manager ID</label>
+        </div>
+      </div>
+
+      <div class="grid" style="margin-top: 18px;">
+        <label>
+          Auto fit box size
+          <select id="autoFit">
+            <option value="on" selected>On</option>
+            <option value="off">Off</option>
+          </select>
+          <span class="hint">Turn off after the first pass to manually fine-tune.</span>
+        </label>
+        <label>Box width<input id="boxWidth" type="number" value="210"></label>
+        <label>Box height<input id="boxHeight" type="number" value="88"></label>
+        <label>Manager subtree gap<input id="managerGap" type="number" value="34"></label>
+      </div>
+
+      <div class="grid" style="margin-top: 14px;">
+        <label>Generation gap<input id="generationGap" type="number" value="72"></label>
+        <label>Leaf gap<input id="leafGap" type="number" value="22"></label>
+        <label>Leaf row gap<input id="leafRowGap" type="number" value="28"></label>
+        <label>Leaf section gap<input id="leafSectionGap" type="number" value="40"></label>
+      </div>
+
+      <div class="grid" style="margin-top: 14px;">
+        <label>
+          Max leaf row width
+          <input id="maxLeafRowWidth" type="number" value="1450">
+          <span class="hint">Only people with no reports are wrapped.</span>
+        </label>
+
+        <label>
+          Page format
+          <select id="pageMode">
+            <option value="landscape" selected>Landscape</option>
+            <option value="portrait">Portrait</option>
+          </select>
+        </label>
+
+        <label>Page margin<input id="pageMargin" type="number" value="28"></label>
+        <label>Header height<input id="headerHeight" type="number" value="92"></label>
+      </div>
+
+      <div class="actions">
+        <button id="buildBtn" type="button">Build chart</button>
+        <button id="downloadSvgBtn" class="secondary" type="button" disabled>Download current SVG</button>
+        <button id="downloadPngBtn" class="secondary" type="button" disabled>Download current PNG</button>
+        <button id="downloadAllSvgBtn" class="secondary" type="button" disabled>Download all SVGs</button>
+        <button id="downloadAllPngBtn" class="secondary" type="button" disabled>Download all PNGs</button>
+      </div>
+
+      <p class="hint">
+        Layout editing and style customisation are in the left panel beside the preview. Hold Shift while clicking boxes or connectors to select multiple. Multiple uploaded CSV files are split into separate editable charts by file and Building value.
+      </p>
+
+      <p id="errorBox" class="error"></p>
+    </section>
+
+    <section class="card">
+      <h2>2. Chart</h2>
+      <div class="stats" id="stats"></div>
+
+      <div class="preview-layout">
+        <aside class="preview-sidebar">
+          <h3>Customise selection</h3>
+
+          <p id="selectionHint" class="sidebar-hint">
+            Click a box or connector line to customise it.
+          </p>
+
+          <div class="sidebar-section">
+            <h4>Layout editing</h4>
+
+            <button id="editModeBtn" class="secondary full-width" type="button" disabled>
+              Edit layout: Off
+            </button>
+
+            <button id="resetLayoutBtn" class="secondary full-width" type="button" disabled>
+              Reset layout
+            </button>
+
+            <p class="sidebar-hint">
+              Turn edit mode on, then select a box or connector. Hold Shift to select multiple. Drag any selected box to move selected boxes together.
+            </p>
+          </div>
+
+          <div class="sidebar-section">
+            <h4>Style</h4>
+
+            <div id="boxControls" hidden>
+              <label>
+                Box preset
+                <select id="boxPreset">
+                  <option value="green">White box, green outline</option>
+                  <option value="lightBlue">Light Blue box</option>
+                  <option value="blackBorder">Black border, white box, black text</option>
+                  <option value="blackBox">Black box, white text</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </label>
+
+              <label>Box fill<input id="boxFill" type="color" value="#ffffff"></label>
+              <label>Box border<input id="boxStroke" type="color" value="#00843D"></label>
+              <label>Text colour<input id="boxText" type="color" value="#172033"></label>
+
+              <p class="sidebar-hint">
+                Layout: drag any selected box to move the group. The green resize handle appears only on the last selected box.
+              </p>
+            </div>
+
+            <div id="lineControls" hidden>
+              <label>Line colour<input id="lineStroke" type="color" value="#64748b"></label>
+
+              <label>
+                Line style
+                <select id="lineStyle">
+                  <option value="solid">Solid</option>
+                  <option value="dotted">Dotted</option>
+                  <option value="dashed">Dashed</option>
+                </select>
+              </label>
+
+              <label>
+                Parent side
+                <select id="parentSide">
+                  <option value="bottom">Parent bottom</option>
+                  <option value="top">Parent top</option>
+                  <option value="left">Parent left</option>
+                  <option value="right">Parent right</option>
+                </select>
+              </label>
+
+              <label>
+                Child side
+                <select id="childSide">
+                  <option value="top">Child top</option>
+                  <option value="bottom">Child bottom</option>
+                  <option value="left">Child left</option>
+                  <option value="right">Child right</option>
+                </select>
+              </label>
+
+              <p class="sidebar-hint">
+                Layout: selected connectors show circle handles. Drag a handle to move that connector’s elbow route.
+              </p>
+            </div>
+
+            <div class="sidebar-actions">
+              <button id="applyStyleBtn" type="button" disabled>Apply style</button>
+              <button id="clearSelectionBtn" class="secondary" type="button">Clear selection</button>
+            </div>
+          </div>
+        </aside>
+
+        <div id="chartWrap">
+          <svg id="chartSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Required CSV format</h2>
+      <pre>Employee ID,Name,Manager ID,Job Role,Type of Work,Sub Type of Work,Area,Building
+E00121,Will,,Manager,Electrical,,Area1,Building1
+E00120,Jeremy,E00121,Supervisor,Electrical,,Area1,Building1
+E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
+    </section>
+  </main>
+
+  <script>
+    let allRows = [];
+    let uploadedSources = [];
+    let chartDataSets = [];
+    let chartStateStore = new Map();
+    let activeSourceId = "";
+    let activeChartId = "";
+    let currentFileStem = "org_chart";
+    const LOGO_PATH = "mehlogo.png";
+    let logoDataUrl = "";
+
+    let editMode = false;
+    let manualLayout = new Map();
+    let lastLayoutSignature = "";
+    let activeDrag = null;
+    let activeResize = null;
+    let activeLineDrag = null;
+    let isRedrawingFromPointer = false;
+
+    let selectedType = "";
+    let selectedLineKey = "";
+    let selectedNodeId = "";
+    let selectedNodeIds = new Set();
+    let selectedLineKeys = new Set();
+
+    let lastDrawnNodesById = new Map();
+
+    let nodeStyles = new Map();
+    let connectorStyles = new Map();
+
+    const BOX_PRESETS = {
+      green: { fill: "#ffffff", stroke: "#00843D", text: "#172033" },
+      lightBlue: { fill: "#dbeafe", stroke: "#2563eb", text: "#172033" },
+      blackBorder: { fill: "#ffffff", stroke: "#000000", text: "#000000" },
+      blackBox: { fill: "#000000", stroke: "#000000", text: "#ffffff" }
+    };
+
+    const PAGE_PRESETS = {
+      landscape: { width: 1587, height: 1123, label: "Landscape" },
+      portrait: { width: 1123, height: 1587, label: "Portrait" }
+    };
+
+    const el = id => document.getElementById(id);
+
+    function blobToDataUrl(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    async function loadLogo() {
+      try {
+        const response = await fetch(LOGO_PATH);
+        if (!response.ok) throw new Error("Logo not found");
+        const blob = await response.blob();
+        logoDataUrl = await blobToDataUrl(blob);
+      } catch (error) {
+        console.warn("Could not load mehlogo.png", error);
+        logoDataUrl = "";
+      }
+    }
+
+    const logoReady = loadLogo().then(() => {
+      if (allRows.length) drawChart();
+    });
+
+    function cleanText(value) {
+      const bad = new Set(["", "N/A", "NA", "NONE", "NULL", "-", "TBC", "TBD"]);
+      const text = String(value ?? "").trim().replace(/\s+/g, " ");
+      return bad.has(text.toUpperCase()) ? "" : text;
+    }
+
+    function parseCSV(text) {
+      const rows = [];
+      let row = [];
+      let field = "";
+      let inQuotes = false;
+
+      for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        const n = text[i + 1];
+
+        if (inQuotes) {
+          if (c === '"' && n === '"') {
+            field += '"';
+            i++;
+          } else if (c === '"') {
+            inQuotes = false;
+          } else {
+            field += c;
+          }
+        } else {
+          if (c === '"') {
+            inQuotes = true;
+          } else if (c === ",") {
+            row.push(field);
+            field = "";
+          } else if (c === "\n") {
+            row.push(field);
+            rows.push(row);
+            row = [];
+            field = "";
+          } else if (c !== "\r") {
+            field += c;
+          }
+        }
+      }
+
+      row.push(field);
+      rows.push(row);
+
+      const headers = rows.shift().map(h => cleanText(h));
+
+      return rows
+        .filter(r => r.some(v => cleanText(v)))
+        .map(r => {
+          const obj = {};
+          headers.forEach((h, i) => {
+            obj[h] = cleanText(r[i] ?? "");
+          });
+          return obj;
+        });
+    }
+
+    function safeName(s) {
+      return cleanText(s)
+        .replace(/[<>:"/\\|?*]+/g, "-")
+        .replace(/\s+/g, "_") || "org_chart";
+    }
+
+    function makeEmptyChartState() {
+      return {
+        manualLayout: new Map(),
+        nodeStyles: new Map(),
+        connectorStyles: new Map(),
+        lastLayoutSignature: ""
+      };
+    }
+
+    function getActiveChart() {
+      return chartDataSets.find(chart => chart.id === activeChartId) || chartDataSets[0] || null;
+    }
+
+    function setActiveChart(chartId) {
+      const chart = chartDataSets.find(item => item.id === chartId) || chartDataSets[0] || null;
+
+      if (!chart) {
+        activeChartId = "";
+        allRows = [];
+        manualLayout = new Map();
+        nodeStyles = new Map();
+        connectorStyles = new Map();
+        lastLayoutSignature = "";
+        return;
+      }
+
+      activeChartId = chart.id;
+      allRows = chart.rows;
+      currentFileStem = chart.fileStem;
+
+      manualLayout = chart.state.manualLayout;
+      nodeStyles = chart.state.nodeStyles;
+      connectorStyles = chart.state.connectorStyles;
+      lastLayoutSignature = chart.state.lastLayoutSignature || "";
+
+      selectedType = "";
+      selectedNodeId = "";
+      selectedLineKey = "";
+      selectedNodeIds.clear();
+      selectedLineKeys.clear();
+    }
+
+    function persistActiveChartState() {
+      const chart = getActiveChart();
+
+      if (!chart) {
+        return;
+      }
+
+      chart.state.manualLayout = manualLayout;
+      chart.state.nodeStyles = nodeStyles;
+      chart.state.connectorStyles = connectorStyles;
+      chart.state.lastLayoutSignature = lastLayoutSignature;
+      chartStateStore.set(chart.id, chart.state);
+    }
+
+    function getActiveSource() {
+      return uploadedSources.find(source => source.id === activeSourceId) || uploadedSources[0] || null;
+    }
+
+    function getChartsForActiveSource() {
+      const activeSource = getActiveSource();
+
+      if (!activeSource) {
+        return [];
+      }
+
+      return chartDataSets.filter(chart => chart.sourceId === activeSource.id);
+    }
+
+    function renderFileTabs() {
+      const tabs = el("fileTabs");
+      tabs.innerHTML = "";
+
+      if (!uploadedSources.length) {
+        tabs.hidden = true;
+        return;
+      }
+
+      tabs.hidden = false;
+
+      uploadedSources.forEach(source => {
+        const chartCount = chartDataSets.filter(chart => chart.sourceId === source.id).length;
+        const button = document.createElement("button");
+
+        button.type = "button";
+        button.className = source.id === activeSourceId ? "file-tab active" : "file-tab";
+        button.innerHTML = `${source.fileStem} <span class="file-tab-count">${chartCount}</span>`;
+
+        button.addEventListener("click", () => {
+          activeSourceId = source.id;
+          const chartsForSource = getChartsForActiveSource();
+
+          if (chartsForSource.length) {
+            setActiveChart(chartsForSource[0].id);
+          }
+
+          updateBuildingSelect();
+          drawChart();
+        });
+
+        tabs.appendChild(button);
+      });
+    }
+
+    function rebuildChartDataSets(preferredChartId = "") {
+      const buildingCol = el("buildingCol").value;
+      const nextCharts = [];
+
+      uploadedSources.forEach(source => {
+        const grouped = new Map();
+
+        source.rows.forEach(row => {
+          const building = cleanText(row[buildingCol]) || "No Building";
+
+          if (!grouped.has(building)) {
+            grouped.set(building, []);
+          }
+
+          grouped.get(building).push(row);
+        });
+
+        Array.from(grouped.entries())
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .forEach(([building, rows]) => {
+            const id = `${source.id}__${safeName(building)}`;
+            const state = chartStateStore.get(id) || makeEmptyChartState();
+
+            chartStateStore.set(id, state);
+
+            nextCharts.push({
+              id,
+              fileName: source.fileName,
+              fileStem: source.fileStem,
+              sourceId: source.id,
+              building,
+              label: `${source.fileStem} — ${building}`,
+              rows,
+              state
+            });
+          });
+      });
+
+      chartDataSets = nextCharts;
+
+      if (!uploadedSources.some(source => source.id === activeSourceId)) {
+        activeSourceId = uploadedSources[0]?.id || "";
+      }
+
+      updateBuildingSelect(preferredChartId);
+    }
+
+    function updateBuildingSelect(preferredChartId = "") {
+      const select = el("buildingSelect");
+      const previousValue = preferredChartId || select.value || activeChartId;
+      const chartsForSource = getChartsForActiveSource();
+
+      select.innerHTML = "";
+
+      if (!uploadedSources.length || !chartDataSets.length) {
+        const option = document.createElement("option");
+        option.textContent = "Upload one or more CSV files first";
+        select.appendChild(option);
+        select.disabled = true;
+        setActiveChart("");
+        renderFileTabs();
+        return;
+      }
+
+      if (!chartsForSource.length) {
+        const option = document.createElement("option");
+        option.textContent = "No charts in this file";
+        select.appendChild(option);
+        select.disabled = true;
+        setActiveChart("");
+        renderFileTabs();
+        return;
+      }
+
+      chartsForSource.forEach(chart => {
+        const option = document.createElement("option");
+        option.value = chart.id;
+        option.textContent = chart.building;
+        select.appendChild(option);
+      });
+
+      select.disabled = false;
+
+      const nextValue = chartsForSource.some(chart => chart.id === previousValue)
+        ? previousValue
+        : chartsForSource[0].id;
+
+      select.value = nextValue;
+      setActiveChart(nextValue);
+      renderFileTabs();
+    }
+
+    function buildHierarchy(rows) {
+      const idCol = el("idCol").value;
+      const nameCol = el("nameCol").value;
+      const managerCol = el("managerCol").value;
+
+      const nodes = new Map();
+
+      rows.forEach(row => {
+        const id = cleanText(row[idCol]);
+        const name = cleanText(row[nameCol]);
+
+        if (!id || !name) return;
+
+        nodes.set(id, {
+          id,
+          name,
+          managerId: cleanText(row[managerCol]),
+          row,
+          children: [],
+          managerRow: [],
+          leafRows: [],
+          relX: 0,
+          relY: 0,
+          subtreeWidth: 0,
+          subtreeHeight: 0,
+          boxX: 0,
+          boxY: 0,
+          boxW: 0,
+          boxH: 0,
+          centerX: 0,
+          centerY: 0,
+          isVirtual: false
+        });
+      });
+
+      const roots = [];
+
+      nodes.forEach(node => {
+        if (!node.managerId || node.managerId === node.id || !nodes.has(node.managerId)) {
+          node.managerId = "";
+          roots.push(node);
+        } else {
+          nodes.get(node.managerId).children.push(node);
+        }
+      });
+
+      nodes.forEach(node => node.children.sort((a, b) => a.name.localeCompare(b.name)));
+      roots.sort((a, b) => a.name.localeCompare(b.name));
+
+      return { nodes: Array.from(nodes.values()), roots };
+    }
+
+    function getPageConfig() {
+      const mode = el("pageMode").value || "landscape";
+      const preset = PAGE_PRESETS[mode] || PAGE_PRESETS.landscape;
+      const margin = Number(el("pageMargin").value) || 28;
+      const headerHeight = Number(el("headerHeight").value) || 92;
+
+      return {
+        mode,
+        label: preset.label,
+        pageWidth: preset.width,
+        pageHeight: preset.height,
+        margin,
+        headerHeight,
+        innerWidth: preset.width - margin * 2,
+        innerHeight: preset.height - margin * 2 - headerHeight
+      };
+    }
+
+    function isLeaf(node) {
+      return !node.children || node.children.length === 0;
+    }
+
+    function splitChildren(node) {
+      const managerChildren = [];
+      const leafChildren = [];
+
+      node.children.forEach(child => {
+        if (isLeaf(child)) leafChildren.push(child);
+        else managerChildren.push(child);
+      });
+
+      return { managerChildren, leafChildren };
+    }
+
+    function packLeavesIntoRows(leaves, maxWidth, boxW, gap) {
+      const rows = [];
+      if (!leaves.length) return rows;
+
+      let current = { items: [], width: 0 };
+
+      leaves.forEach(leaf => {
+        const nextWidth = current.items.length ? current.width + gap + boxW : boxW;
+
+        if (current.items.length && nextWidth > maxWidth) {
+          rows.push(current);
+          current = { items: [leaf], width: boxW };
+        } else {
+          current.items.push(leaf);
+          current.width = nextWidth;
+        }
+      });
+
+      if (current.items.length) rows.push(current);
+      return rows;
+    }
+
+    function computeReadableLayout(node, options) {
+      const ownW = node.isVirtual ? 0 : options.boxW;
+      const ownH = node.isVirtual ? 0 : options.boxH;
+
+      if (!node.children.length) {
+        node.subtreeWidth = ownW;
+        node.subtreeHeight = ownH;
+        node.managerRow = [];
+        node.leafRows = [];
+        return;
+      }
+
+      const { managerChildren, leafChildren } = splitChildren(node);
+
+      managerChildren.forEach(child => computeReadableLayout(child, options));
+      leafChildren.forEach(child => computeReadableLayout(child, options));
+
+      const managerRowWidth = managerChildren.reduce((sum, child, index) => {
+        return sum + child.subtreeWidth + (index > 0 ? options.managerGap : 0);
+      }, 0);
+
+      const leafRows = packLeavesIntoRows(
+        leafChildren,
+        options.maxLeafRowWidth,
+        options.boxW,
+        options.leafGap
+      );
+
+      const leafBlockWidth = leafRows.reduce((max, row) => Math.max(max, row.width), 0);
+      const leafBlockHeight = leafRows.reduce((sum, row, index) => {
+        return sum + options.boxH + (index > 0 ? options.leafRowGap : 0);
+      }, 0);
+
+      const managerBlockHeight = managerChildren.length
+        ? Math.max(...managerChildren.map(child => child.subtreeHeight))
+        : 0;
+
+      let childBlockHeight = 0;
+
+      if (managerChildren.length) childBlockHeight += managerBlockHeight;
+      if (leafRows.length) childBlockHeight += (managerChildren.length ? options.leafSectionGap : 0) + leafBlockHeight;
+
+      const childBlockWidth = Math.max(managerRowWidth, leafBlockWidth);
+
+      node.subtreeWidth = Math.max(ownW, childBlockWidth);
+      node.subtreeHeight = node.isVirtual
+        ? childBlockHeight
+        : ownH + options.generationGap + childBlockHeight;
+
+      node.managerRow = managerChildren;
+      node.leafRows = leafRows;
+
+      let y = node.isVirtual ? 0 : ownH + options.generationGap;
+      let x = (node.subtreeWidth - managerRowWidth) / 2;
+
+      managerChildren.forEach(child => {
+        child.relX = x;
+        child.relY = y;
+        x += child.subtreeWidth + options.managerGap;
+      });
+
+      if (managerChildren.length) {
+        y += managerBlockHeight + (leafRows.length ? options.leafSectionGap : 0);
+      }
+
+      leafRows.forEach(row => {
+        x = (node.subtreeWidth - row.width) / 2;
+
+        row.items.forEach(child => {
+          child.relX = x;
+          child.relY = y;
+          x += options.boxW + options.leafGap;
+        });
+
+        y += options.boxH + options.leafRowGap;
+      });
+    }
+
+    function assignAbsolutePositions(node, originX, originY, options) {
+      node.originX = originX;
+      node.originY = originY;
+
+      if (!node.isVirtual) {
+        node.boxW = options.boxW;
+        node.boxH = options.boxH;
+        node.boxX = originX + (node.subtreeWidth - options.boxW) / 2;
+        node.boxY = originY;
+        node.centerX = node.boxX + node.boxW / 2;
+        node.centerY = node.boxY + node.boxH / 2;
+      }
+
+      node.children.forEach(child => {
+        assignAbsolutePositions(child, originX + child.relX, originY + child.relY, options);
+      });
+    }
+
+    function getVisibleChartFields(node) {
+      const idCol = el("idCol").value;
+      const managerCol = el("managerCol").value;
+      const titleCol = el("titleCol").value;
+      const typeCol = el("typeCol").value;
+      const areaCol = el("areaCol").value;
+      const buildingCol = el("buildingCol").value;
+
+      const fields = [];
+
+      if (el("showName").checked) fields.push({ text: node.name, cls: "name" });
+      if (el("showEmployeeId").checked) fields.push({ text: cleanText(node.row[idCol]), cls: "meta" });
+      if (el("showJobRole").checked) fields.push({ text: cleanText(node.row[titleCol]), cls: "meta" });
+      if (el("showTypeOfWork").checked) fields.push({ text: cleanText(node.row[typeCol]), cls: "meta" });
+      if (el("showArea").checked) fields.push({ text: cleanText(node.row[areaCol]), cls: "meta" });
+      if (el("showBuilding").checked) fields.push({ text: cleanText(node.row[buildingCol]), cls: "meta" });
+      if (el("showManagerId").checked) fields.push({ text: cleanText(node.row[managerCol]), cls: "meta" });
+
+      return fields.filter(field => field.text).slice(0, 5);
+    }
+
+    function getNodeBoxW(node, options) {
+      return node.boxW || options.boxW;
+    }
+
+    function getNodeBoxH(node, options) {
+      return node.boxH || options.boxH;
+    }
+
+    function getDefaultNodeStyle() {
+      return { fill: "#ffffff", stroke: "#00843D", text: "#172033" };
+    }
+
+    function getNodeStyle(node) {
+      return nodeStyles.get(node.id) || getDefaultNodeStyle();
+    }
+
+    function getDefaultConnectorStyle() {
+      return {
+        stroke: "#64748b",
+        style: "solid",
+        parentSide: "bottom",
+        childSide: "top",
+        offsetX: 0,
+        offsetY: 0
+      };
+    }
+
+    function getConnectorKey(parent, child) {
+      return `${parent.id}=>${child.id}`;
+    }
+
+    function getConnectorStyle(parent, child) {
+      return connectorStyles.get(getConnectorKey(parent, child)) || getDefaultConnectorStyle();
+    }
+
+    function getStrokeDashArray(style) {
+      if (style === "dotted") return "2 5";
+      if (style === "dashed") return "9 6";
+      return "";
+    }
+
+    function getConnectionPoint(node, side, options) {
+      const boxW = getNodeBoxW(node, options);
+      const boxH = getNodeBoxH(node, options);
+
+      if (side === "top") return { x: node.boxX + boxW / 2, y: node.boxY, side };
+      if (side === "bottom") return { x: node.boxX + boxW / 2, y: node.boxY + boxH, side };
+      if (side === "left") return { x: node.boxX, y: node.boxY + boxH / 2, side };
+      if (side === "right") return { x: node.boxX + boxW, y: node.boxY + boxH / 2, side };
+
+      return { x: node.boxX + boxW / 2, y: node.boxY + boxH, side: "bottom" };
+    }
+
+    function buildElbowPath(start, end, style = {}) {
+      const offsetX = Number(style.offsetX) || 0;
+      const offsetY = Number(style.offsetY) || 0;
+
+      if (start.side === "bottom" || start.side === "top") {
+        const midY = start.y + (end.y - start.y) / 2 + offsetY;
+
+        return `
+          M ${start.x} ${start.y}
+          V ${midY}
+          H ${end.x}
+          V ${end.y}
+        `;
+      }
+
+      if (start.side === "left" || start.side === "right") {
+        const midX = start.x + (end.x - start.x) / 2 + offsetX;
+
+        return `
+          M ${start.x} ${start.y}
+          H ${midX}
+          V ${end.y}
+          H ${end.x}
+        `;
+      }
+
+      const midY = start.y + (end.y - start.y) / 2 + offsetY;
+
+      return `
+        M ${start.x} ${start.y}
+        V ${midY}
+        H ${end.x}
+        V ${end.y}
+      `;
+    }
+
+    function clearSelection() {
+      selectedType = "";
+      selectedNodeId = "";
+      selectedLineKey = "";
+      selectedNodeIds.clear();
+      selectedLineKeys.clear();
+
+      updateSelectionPanel();
+      drawChart();
+    }
+
+    function updateSelectionPanel() {
+      const nodeCount = selectedNodeIds.size;
+      const lineCount = selectedLineKeys.size;
+
+      const hasNode = selectedType === "node" && nodeCount > 0;
+      const hasLine = selectedType === "line" && lineCount > 0;
+
+      el("boxControls").hidden = !hasNode;
+      el("lineControls").hidden = !hasLine;
+      el("applyStyleBtn").disabled = !hasNode && !hasLine;
+
+      if (!hasNode && !hasLine) {
+        el("selectionHint").textContent = editMode
+          ? "Edit mode is on. Select a box or connector. Shift-click to select multiple."
+          : "Click a box or connector line to customise it. Shift-click to select multiple.";
+        return;
+      }
+
+      if (hasNode) {
+        el("selectionHint").textContent = editMode
+          ? `${nodeCount} box${nodeCount === 1 ? "" : "es"} selected. Drag any selected box to move the group. Resize is single-box only.`
+          : `${nodeCount} box${nodeCount === 1 ? "" : "es"} selected. Adjust colours below, then apply.`;
+        return;
+      }
+
+      if (hasLine) {
+        el("selectionHint").textContent = editMode
+          ? `${lineCount} connector${lineCount === 1 ? "" : "s"} selected. Drag a selected connector handle to adjust that route.`
+          : `${lineCount} connector${lineCount === 1 ? "" : "s"} selected. Adjust line options below, then apply.`;
+      }
+    }
+
+    function selectNode(node, additive = false) {
+      if (!additive) {
+        selectedNodeIds.clear();
+        selectedLineKeys.clear();
+      }
+
+      if (additive && selectedNodeIds.has(node.id)) {
+        selectedNodeIds.delete(node.id);
+      } else {
+        selectedNodeIds.add(node.id);
+      }
+
+      selectedLineKeys.clear();
+
+      selectedType = selectedNodeIds.size ? "node" : "";
+      selectedNodeId = selectedNodeIds.size ? Array.from(selectedNodeIds).at(-1) : "";
+      selectedLineKey = "";
+
+      const style = getNodeStyle(node);
+
+      el("boxPreset").value = "custom";
+      el("boxFill").value = style.fill;
+      el("boxStroke").value = style.stroke;
+      el("boxText").value = style.text;
+
+      updateSelectionPanel();
+      drawChart();
+    }
+
+    function selectLine(parent, child, additive = false) {
+      const key = getConnectorKey(parent, child);
+
+      if (!additive) {
+        selectedLineKeys.clear();
+        selectedNodeIds.clear();
+      }
+
+      if (additive && selectedLineKeys.has(key)) {
+        selectedLineKeys.delete(key);
+      } else {
+        selectedLineKeys.add(key);
+      }
+
+      selectedNodeIds.clear();
+
+      selectedType = selectedLineKeys.size ? "line" : "";
+      selectedLineKey = selectedLineKeys.size ? Array.from(selectedLineKeys).at(-1) : "";
+      selectedNodeId = "";
+
+      const style = getConnectorStyle(parent, child);
+
+      el("lineStroke").value = style.stroke;
+      el("lineStyle").value = style.style;
+      el("parentSide").value = style.parentSide;
+      el("childSide").value = style.childSide;
+
+      updateSelectionPanel();
+      drawChart();
+    }
+
+    function applyCurrentStyle() {
+      if (selectedType === "node" && selectedNodeIds.size) {
+        selectedNodeIds.forEach(id => {
+          nodeStyles.set(id, {
+            fill: el("boxFill").value,
+            stroke: el("boxStroke").value,
+            text: el("boxText").value
+          });
+        });
+      }
+
+      if (selectedType === "line" && selectedLineKeys.size) {
+        selectedLineKeys.forEach(key => {
+          const current = connectorStyles.get(key) || getDefaultConnectorStyle();
+
+          connectorStyles.set(key, {
+            ...current,
+            stroke: el("lineStroke").value,
+            style: el("lineStyle").value,
+            parentSide: el("parentSide").value,
+            childSide: el("childSide").value
+          });
+        });
+      }
+
+      drawChart();
+    }
+
+    function drawPath(parent, d, options = {}) {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+
+      path.setAttribute("class", "line");
+
+      if (options.connectorKey && selectedType === "line" && selectedLineKeys.has(options.connectorKey)) {
+        path.classList.add("selected-line");
+      }
+
+      path.setAttribute("d", d);
+      path.setAttribute("vector-effect", "non-scaling-stroke");
+
+      if (options.stroke) path.setAttribute("stroke", options.stroke);
+
+      const dashArray = getStrokeDashArray(options.style);
+      if (dashArray) path.setAttribute("stroke-dasharray", dashArray);
+
+      path.setAttribute("pointer-events", "stroke");
+
+      path.style.cursor =
+        editMode &&
+        options.connectorKey &&
+        selectedType === "line" &&
+        selectedLineKeys.has(options.connectorKey)
+          ? "grab"
+          : "pointer";
+
+      if (options.clickHandler) {
+        path.addEventListener("click", event => {
+          event.stopPropagation();
+          options.clickHandler(event);
+        });
+      }
+
+      if (
+        options.connectorKey &&
+        editMode &&
+        selectedType === "line" &&
+        selectedLineKeys.has(options.connectorKey)
+      ) {
+        path.addEventListener("pointerdown", event => {
+          event.stopPropagation();
+          startDragLine(event, options.connectorKey);
+        });
+      }
+
+      parent.appendChild(path);
+    }
+
+    function drawLineHandle(parent, start, end, style, connectorKey) {
+      if (!editMode) return;
+      if (selectedType !== "line" || !selectedLineKeys.has(connectorKey)) return;
+
+      const offsetX = Number(style.offsetX) || 0;
+      const offsetY = Number(style.offsetY) || 0;
+
+      let handleX;
+      let handleY;
+
+      if (start.side === "left" || start.side === "right") {
+        handleX = start.x + (end.x - start.x) / 2 + offsetX;
+        handleY = start.y + (end.y - start.y) / 2;
+      } else {
+        handleX = start.x + (end.x - start.x) / 2;
+        handleY = start.y + (end.y - start.y) / 2 + offsetY;
+      }
+
+      const handle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      handle.setAttribute("cx", handleX);
+      handle.setAttribute("cy", handleY);
+      handle.setAttribute("r", 7);
+      handle.setAttribute("class", "line-handle");
+      handle.style.cursor = "grab";
+
+      handle.addEventListener("pointerdown", event => {
+        event.stopPropagation();
+        startDragLine(event, connectorKey);
+      });
+
+      parent.appendChild(handle);
+    }
+
+    function drawManagerConnectors(node, layer, options) {
+      if (node.isVirtual || !node.managerRow.length) return;
+
+      node.managerRow.forEach(child => {
+        const connectorKey = getConnectorKey(node, child);
+        const style = getConnectorStyle(node, child);
+        const start = getConnectionPoint(node, style.parentSide, options);
+        const end = getConnectionPoint(child, style.childSide, options);
+
+        drawPath(layer, buildElbowPath(start, end, style), {
+          stroke: style.stroke,
+          style: style.style,
+          connectorKey,
+          clickHandler: event => selectLine(node, child, event.shiftKey)
+        });
+
+        drawLineHandle(layer, start, end, style, connectorKey);
+      });
+    }
+
+    function drawLeafConnectors(node, layer, options) {
+      if (node.isVirtual || !node.leafRows.length) return;
+
+      node.leafRows.forEach(row => {
+        row.items.forEach(child => {
+          const connectorKey = getConnectorKey(node, child);
+          const style = getConnectorStyle(node, child);
+          const start = getConnectionPoint(node, style.parentSide, options);
+          const end = getConnectionPoint(child, style.childSide, options);
+
+          drawPath(layer, buildElbowPath(start, end, style), {
+            stroke: style.stroke,
+            style: style.style,
+            connectorKey,
+            clickHandler: event => selectLine(node, child, event.shiftKey)
+          });
+
+          drawLineHandle(layer, start, end, style, connectorKey);
+        });
+      });
+    }
+
+    function drawConnectors(node, layer, options) {
+      drawManagerConnectors(node, layer, options);
+      drawLeafConnectors(node, layer, options);
+    }
+
+    function drawNode(node, layer, options) {
+      if (node.isVirtual) return;
+
+      const boxW = getNodeBoxW(node, options);
+      const boxH = getNodeBoxH(node, options);
+      const style = getNodeStyle(node);
+
+      const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      group.setAttribute("data-node-id", node.id);
+      group.style.cursor = editMode && selectedType === "node" && selectedNodeIds.has(node.id)
+        ? "move"
+        : "pointer";
+
+      const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      rect.setAttribute("class", "box");
+      rect.setAttribute("x", node.boxX);
+      rect.setAttribute("y", node.boxY);
+      rect.setAttribute("width", boxW);
+      rect.setAttribute("height", boxH);
+      rect.setAttribute("rx", 10);
+      rect.setAttribute("fill", style.fill);
+      rect.setAttribute("stroke", style.stroke);
+      group.appendChild(rect);
+
+      if (selectedType === "node" && selectedNodeIds.has(node.id)) {
+        const highlight = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+
+        highlight.setAttribute("class", "selection-outline");
+        highlight.setAttribute("x", node.boxX - 5);
+        highlight.setAttribute("y", node.boxY - 5);
+        highlight.setAttribute("width", boxW + 10);
+        highlight.setAttribute("height", boxH + 10);
+        highlight.setAttribute("rx", 13);
+
+        group.appendChild(highlight);
+      }
+
+      const textLines = getVisibleChartFields(node);
+      const lineCount = Math.max(1, textLines.length);
+
+      const baseFont = Math.max(8, Math.min(16, Math.floor(boxH / (lineCount + 2))));
+      const nameFont = Math.min(baseFont + 2, 18);
+      const metaFont = baseFont;
+
+      const lineHeights = textLines.map(line => line.cls === "name" ? nameFont + 3 : metaFont + 3);
+      const totalTextHeight = lineHeights.reduce((sum, h) => sum + h, 0);
+      let y = node.boxY + (boxH - totalTextHeight) / 2 + (lineHeights[0] || 12) - 3;
+
+      textLines.forEach((line, i) => {
+        const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+
+        const fontSize = line.cls === "name" ? nameFont : metaFont;
+        const fontWeight = line.cls === "name" ? "700" : "400";
+
+        text.setAttribute("x", node.boxX + boxW / 2);
+        text.setAttribute("y", y);
+        text.setAttribute("text-anchor", "middle");
+        text.setAttribute("pointer-events", "none");
+        text.setAttribute("fill", style.text);
+        text.setAttribute("font-size", fontSize);
+        text.setAttribute("font-weight", fontWeight);
+        text.setAttribute("font-family", "Arial, Helvetica, sans-serif");
+
+        const maxChars = Math.max(
+          10,
+          Math.floor(boxW / (line.cls === "name" ? fontSize * 0.58 : fontSize * 0.52))
+        );
+
+        text.textContent = line.text.length > maxChars
+          ? line.text.slice(0, maxChars - 3) + "..."
+          : line.text;
+
+        group.appendChild(text);
+        y += lineHeights[i];
+      });
+
+      if (editMode && selectedType === "node" && selectedNodeId === node.id) {
+        const handleSize = 13;
+        const handle = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+
+        handle.setAttribute("class", "resize-handle");
+        handle.setAttribute("x", node.boxX + boxW - handleSize);
+        handle.setAttribute("y", node.boxY + boxH - handleSize);
+        handle.setAttribute("width", handleSize);
+        handle.setAttribute("height", handleSize);
+        handle.setAttribute("rx", 2);
+        handle.style.cursor = "nwse-resize";
+
+        handle.addEventListener("pointerdown", event => {
+          event.stopPropagation();
+          startResizeNode(event, node, options);
+        });
+
+        group.appendChild(handle);
+      }
+
+      group.addEventListener("click", event => {
+        event.stopPropagation();
+
+        if (window.__suppressNextNodeClick) {
+          window.__suppressNextNodeClick = false;
+          return;
+        }
+
+        selectNode(node, event.shiftKey);
+      });
+
+      if (editMode) {
+        group.addEventListener("pointerdown", event => {
+          if (event.target.classList.contains("resize-handle")) return;
+
+          event.stopPropagation();
+
+          /*
+            Group-drag fix:
+            - If this node is already selected, start a drag using the whole selectedNodeIds set.
+            - If this node is not selected, do not redraw/select inside pointerdown. Let the click handler
+              select it normally. This avoids redrawing the SVG under the pointer before a drag starts.
+          */
+          if (selectedType === "node" && selectedNodeIds.has(node.id)) {
+            startDragNode(event, node, options);
+          }
+        });
+      }
+
+      layer.appendChild(group);
+    }
+
+    function renderTree(node, connectorLayer, nodeLayer, options) {
+      if (!node.isVirtual) drawConnectors(node, connectorLayer, options);
+      node.children.forEach(child => renderTree(child, connectorLayer, nodeLayer, options));
+      if (!node.isVirtual) drawNode(node, nodeLayer, options);
+    }
+
+    function countVisibleFields() {
+      return [
+        "showName",
+        "showEmployeeId",
+        "showJobRole",
+        "showTypeOfWork",
+        "showArea",
+        "showBuilding",
+        "showManagerId"
+      ].filter(id => el(id).checked).length;
+    }
+
+    function getMaxTextLength(nodes) {
+      let maxLength = 0;
+
+      nodes.forEach(node => {
+        getVisibleChartFields(node).forEach(field => {
+          maxLength = Math.max(maxLength, field.text.length);
+        });
+      });
+
+      return maxLength;
+    }
+
+    function estimateDepth(node) {
+      if (!node.children.length) return 1;
+      return 1 + Math.max(...node.children.map(estimateDepth));
+    }
+
+    function getTreeDepth(roots) {
+      if (!roots.length) return 1;
+      return Math.max(...roots.map(estimateDepth));
+    }
+
+    function getLeafCount(nodes) {
+      return nodes.filter(node => !node.children.length).length;
+    }
+
+    function getManagerCount(nodes) {
+      return nodes.filter(node => node.children.length).length;
+    }
+
+    function getAutoFitOptions(nodes, roots, page) {
+      const visibleFields = Math.max(1, countVisibleFields());
+      const maxTextLength = getMaxTextLength(nodes);
+      const depth = getTreeDepth(roots);
+      const leafCount = getLeafCount(nodes);
+      const managerCount = getManagerCount(nodes);
+
+      let boxW = 210;
+      let boxH = 58 + visibleFields * 10;
+
+      if (maxTextLength > 28) boxW = 230;
+      if (maxTextLength > 36) boxW = 250;
+
+      if (nodes.length > 40) { boxW -= 15; boxH -= 4; }
+      if (nodes.length > 80) { boxW -= 20; boxH -= 5; }
+      if (nodes.length > 130) { boxW -= 15; boxH -= 4; }
+
+      boxW = Math.max(150, Math.min(260, boxW));
+      boxH = Math.max(56, Math.min(112, boxH));
+
+      let managerGap = Math.round(boxW * 0.16);
+      let generationGap = Math.round(boxH * 0.72);
+      let leafGap = Math.round(boxW * 0.10);
+      let leafRowGap = Math.round(boxH * 0.30);
+      let leafSectionGap = Math.round(boxH * 0.42);
+
+      if (managerCount > 15) managerGap = Math.max(18, managerGap - 8);
+
+      if (leafCount > 50) {
+        leafGap = Math.max(10, leafGap - 8);
+        leafRowGap = Math.max(16, leafRowGap - 6);
+      }
+
+      if (depth > 5) {
+        generationGap = Math.max(38, generationGap - 10);
+        leafSectionGap = Math.max(22, leafSectionGap - 8);
+      }
+
+      const maxLeafRowWidth = Math.max(500, page.innerWidth * 0.96);
+
+      return {
+        boxW,
+        boxH,
+        managerGap,
+        generationGap,
+        leafGap,
+        leafRowGap,
+        leafSectionGap,
+        maxLeafRowWidth
+      };
+    }
+
+    function maybeApplyAutoFit(nodes, roots, page) {
+      if (el("autoFit").value !== "on") return;
+
+      const fit = getAutoFitOptions(nodes, roots, page);
+
+      el("boxWidth").value = fit.boxW;
+      el("boxHeight").value = fit.boxH;
+      el("managerGap").value = fit.managerGap;
+      el("generationGap").value = fit.generationGap;
+      el("leafGap").value = fit.leafGap;
+      el("leafRowGap").value = fit.leafRowGap;
+      el("leafSectionGap").value = fit.leafSectionGap;
+      el("maxLeafRowWidth").value = Math.round(fit.maxLeafRowWidth);
+    }
+
+    function getLayoutSignature() {
+      return [
+        el("buildingSelect").value,
+        el("boxWidth").value,
+        el("boxHeight").value,
+        el("managerGap").value,
+        el("generationGap").value,
+        el("leafGap").value,
+        el("leafRowGap").value,
+        el("leafSectionGap").value,
+        el("maxLeafRowWidth").value,
+        el("pageMode").value,
+        el("pageMargin").value,
+        el("headerHeight").value
+      ].join("|");
+    }
+
+    function applyManualLayout(nodes, options) {
+      nodes.forEach(node => {
+        const saved = manualLayout.get(node.id);
+        if (!saved) return;
+
+        if (Number.isFinite(saved.boxX)) node.boxX = saved.boxX;
+        if (Number.isFinite(saved.boxY)) node.boxY = saved.boxY;
+        if (Number.isFinite(saved.boxW)) node.boxW = saved.boxW;
+        if (Number.isFinite(saved.boxH)) node.boxH = saved.boxH;
+
+        node.centerX = node.boxX + getNodeBoxW(node, options) / 2;
+        node.centerY = node.boxY + getNodeBoxH(node, options) / 2;
+      });
+    }
+
+    function getChartLocalPoint(event, svg, chartGroup) {
+      const point = svg.createSVGPoint();
+      point.x = event.clientX;
+      point.y = event.clientY;
+
+      const ctm = chartGroup.getScreenCTM();
+      if (!ctm) return { x: 0, y: 0 };
+
+      return point.matrixTransform(ctm.inverse());
+    }
+
+    function startDragNode(event, node, options) {
+      if (!editMode) return;
+
+      const svg = el("chartSvg");
+      const chartGroup = document.getElementById("chartGroup");
+      if (!chartGroup) return;
+
+      const start = getChartLocalPoint(event, svg, chartGroup);
+
+      const idsToDrag = selectedType === "node" && selectedNodeIds.has(node.id)
+        ? Array.from(selectedNodeIds)
+        : [node.id];
+
+      const originals = idsToDrag.map(id => {
+        const saved = manualLayout.get(id) || {};
+        const targetNode = lastDrawnNodesById.get(id);
+
+        return {
+          id,
+          boxX: Number.isFinite(saved.boxX) ? saved.boxX : targetNode?.boxX ?? 0,
+          boxY: Number.isFinite(saved.boxY) ? saved.boxY : targetNode?.boxY ?? 0,
+          boxW: Number.isFinite(saved.boxW) ? saved.boxW : targetNode?.boxW ?? options.boxW,
+          boxH: Number.isFinite(saved.boxH) ? saved.boxH : targetNode?.boxH ?? options.boxH
+        };
+      });
+
+      activeDrag = {
+        nodeId: node.id,
+        nodeIds: idsToDrag,
+        originals,
+        startX: start.x,
+        startY: start.y,
+        moved: false
+      };
+
+      try {
+        svg.setPointerCapture(event.pointerId);
+      } catch (error) {
+        // ignore
+      }
+    }
+
+    function startResizeNode(event, node, options) {
+      if (!editMode) return;
+
+      const svg = el("chartSvg");
+      const chartGroup = document.getElementById("chartGroup");
+      if (!chartGroup) return;
+
+      const start = getChartLocalPoint(event, svg, chartGroup);
+
+      activeResize = {
+        nodeId: node.id,
+        startX: start.x,
+        startY: start.y,
+        originalBoxW: getNodeBoxW(node, options),
+        originalBoxH: getNodeBoxH(node, options)
+      };
+
+      try {
+        svg.setPointerCapture(event.pointerId);
+      } catch (error) {
+        // ignore
+      }
+    }
+
+    function startDragLine(event, connectorKey) {
+      if (!editMode) return;
+
+      const svg = el("chartSvg");
+      const chartGroup = document.getElementById("chartGroup");
+      if (!chartGroup) return;
+
+      const start = getChartLocalPoint(event, svg, chartGroup);
+      const existing = connectorStyles.get(connectorKey) || getDefaultConnectorStyle();
+
+      activeLineDrag = {
+        connectorKey,
+        startX: start.x,
+        startY: start.y,
+        originalOffsetX: Number(existing.offsetX) || 0,
+        originalOffsetY: Number(existing.offsetY) || 0
+      };
+
+      try {
+        svg.setPointerCapture(event.pointerId);
+      } catch (error) {
+        // ignore
+      }
+    }
+
+    function updateActiveLineDrag(event) {
+      if (!editMode || !activeLineDrag || isRedrawingFromPointer) return;
+
+      const svg = el("chartSvg");
+      const chartGroup = document.getElementById("chartGroup");
+      if (!chartGroup) return;
+
+      const point = getChartLocalPoint(event, svg, chartGroup);
+      const dx = point.x - activeLineDrag.startX;
+      const dy = point.y - activeLineDrag.startY;
+
+      const current = connectorStyles.get(activeLineDrag.connectorKey) || getDefaultConnectorStyle();
+
+      connectorStyles.set(activeLineDrag.connectorKey, {
+        ...current,
+        offsetX: activeLineDrag.originalOffsetX + dx,
+        offsetY: activeLineDrag.originalOffsetY + dy
+      });
+
+      isRedrawingFromPointer = true;
+
+      requestAnimationFrame(() => {
+        drawChart();
+        isRedrawingFromPointer = false;
+      });
+    }
+
+    function updateActiveEdit(event) {
+      if (activeLineDrag) {
+        updateActiveLineDrag(event);
+        return;
+      }
+
+      if (!editMode || (!activeDrag && !activeResize) || isRedrawingFromPointer) return;
+
+      const svg = el("chartSvg");
+      const chartGroup = document.getElementById("chartGroup");
+      if (!chartGroup) return;
+
+      const point = getChartLocalPoint(event, svg, chartGroup);
+
+      if (activeDrag) {
+        const dx = point.x - activeDrag.startX;
+        const dy = point.y - activeDrag.startY;
+
+        if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+          activeDrag.moved = true;
+        }
+
+        activeDrag.originals.forEach(original => {
+          const saved = manualLayout.get(original.id) || {};
+
+          manualLayout.set(original.id, {
+            ...saved,
+            boxX: original.boxX + dx,
+            boxY: original.boxY + dy,
+            boxW: original.boxW,
+            boxH: original.boxH
+          });
+        });
+      }
+
+      if (activeResize) {
+        const nodeId = activeResize.nodeId;
+        const saved = manualLayout.get(nodeId) || {};
+
+        manualLayout.set(nodeId, {
+          ...saved,
+          boxW: Math.max(90, activeResize.originalBoxW + point.x - activeResize.startX),
+          boxH: Math.max(42, activeResize.originalBoxH + point.y - activeResize.startY)
+        });
+      }
+
+      isRedrawingFromPointer = true;
+
+      requestAnimationFrame(() => {
+        drawChart();
+        isRedrawingFromPointer = false;
+      });
+    }
+
+    function endActiveEdit(event) {
+      if (!activeDrag && !activeResize && !activeLineDrag) return;
+
+      if (activeDrag?.moved) {
+        window.__suppressNextNodeClick = true;
+      }
+
+      activeDrag = null;
+      activeResize = null;
+      activeLineDrag = null;
+
+      try {
+        el("chartSvg").releasePointerCapture(event.pointerId);
+      } catch (error) {
+        // ignore
+      }
+    }
+
+    function drawChart() {
+      const errorBox = el("errorBox");
+      errorBox.textContent = "";
+
+      const activeChart = getActiveChart();
+
+      if (!activeChart || !allRows.length) {
+        errorBox.textContent = "Upload one or more CSV files first.";
+        return;
+      }
+
+      const selectedBuilding = activeChart.building;
+      const rows = allRows;
+
+      const page = getPageConfig();
+      const { nodes, roots } = buildHierarchy(rows);
+
+      if (!nodes.length) {
+        errorBox.textContent = "No valid rows found for this chart.";
+        return;
+      }
+
+      maybeApplyAutoFit(nodes, roots, page);
+
+      const boxW = Number(el("boxWidth").value) || 210;
+      const boxH = Number(el("boxHeight").value) || 88;
+
+      const options = {
+        boxW,
+        boxH,
+        managerGap: Number(el("managerGap").value) || 34,
+        generationGap: Number(el("generationGap").value) || 72,
+        leafGap: Number(el("leafGap").value) || 22,
+        leafRowGap: Number(el("leafRowGap").value) || 28,
+        leafSectionGap: Number(el("leafSectionGap").value) || 40,
+        maxLeafRowWidth: Math.min(
+          Number(el("maxLeafRowWidth").value) || page.innerWidth,
+          page.innerWidth
+        )
+      };
+
+      const layoutRoot = roots.length === 1
+        ? roots[0]
+        : {
+            id: "__virtual_root__",
+            name: "",
+            row: {},
+            children: roots,
+            managerRow: [],
+            leafRows: [],
+            relX: 0,
+            relY: 0,
+            subtreeWidth: 0,
+            subtreeHeight: 0,
+            boxX: 0,
+            boxY: 0,
+            boxW: 0,
+            boxH: 0,
+            centerX: 0,
+            centerY: 0,
+            isVirtual: true
+          };
+
+      computeReadableLayout(layoutRoot, options);
+      assignAbsolutePositions(layoutRoot, 0, 0, options);
+
+      const signature = getLayoutSignature();
+
+      if (signature !== lastLayoutSignature) {
+        manualLayout.clear();
+        lastLayoutSignature = signature;
+      }
+
+      applyManualLayout(nodes, options);
+
+      lastDrawnNodesById = new Map(nodes.map(node => [node.id, node]));
+
+      const rawWidth = Math.max(layoutRoot.subtreeWidth, boxW);
+      const rawHeight = Math.max(layoutRoot.subtreeHeight, boxH);
+
+      const scale = Math.min(
+        1,
+        page.innerWidth / rawWidth,
+        page.innerHeight / rawHeight
+      );
+
+      const scaledWidth = rawWidth * scale;
+      const contentX = page.margin + (page.innerWidth - scaledWidth) / 2;
+      const contentY = page.margin + page.headerHeight + 6;
+
+      const svg = el("chartSvg");
+      svg.setAttribute("width", page.pageWidth);
+      svg.setAttribute("height", page.pageHeight);
+      svg.setAttribute("viewBox", `0 0 ${page.pageWidth} ${page.pageHeight}`);
+      svg.innerHTML = "";
+
+      const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+      defs.innerHTML = `
+        <style>
+          .page-border {
+            fill: #ffffff;
+            stroke: #d8e1ea;
+            stroke-width: 1.5;
+          }
+
+          .box {
+            stroke-width: 1.6;
+          }
+
+          .line {
+            stroke: #64748b;
+            stroke-width: 1.25;
+            fill: none;
+            stroke-linecap: square;
+            stroke-linejoin: miter;
+          }
+
+          .selected-line {
+            stroke: #f59e0b !important;
+            stroke-width: 3 !important;
+          }
+
+          .selection-outline {
+            fill: none;
+            stroke: #f59e0b;
+            stroke-width: 3;
+            stroke-dasharray: 7 5;
+            pointer-events: none;
+          }
+
+          .resize-handle {
+            fill: #00843D;
+            stroke: #ffffff;
+            stroke-width: 1;
+          }
+
+          .line-handle {
+            fill: #ffffff;
+            stroke: #64748b;
+            stroke-width: 1.5;
+          }
+
+          .chart-title {
+            font: bold 28px Arial, Helvetica, sans-serif;
+            fill: #122033;
+          }
+
+          .chart-subtitle {
+            font: 14px Arial, Helvetica, sans-serif;
+            fill: #687789;
+          }
+        </style>
+      `;
+      svg.appendChild(defs);
+
+      const pageRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      pageRect.setAttribute("class", "page-border");
+      pageRect.setAttribute("x", 0.5);
+      pageRect.setAttribute("y", 0.5);
+      pageRect.setAttribute("width", page.pageWidth - 1);
+      pageRect.setAttribute("height", page.pageHeight - 1);
+      svg.appendChild(pageRect);
+
+      if (logoDataUrl) {
+        const image = document.createElementNS("http://www.w3.org/2000/svg", "image");
+        image.setAttribute("href", logoDataUrl);
+        image.setAttribute("x", page.margin);
+        image.setAttribute("y", page.margin - 2);
+        image.setAttribute("width", 90);
+        image.setAttribute("height", 90);
+        image.setAttribute("preserveAspectRatio", "xMidYMid meet");
+        svg.appendChild(image);
+      }
+
+      const title = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      title.setAttribute("class", "chart-title");
+      title.setAttribute("x", page.pageWidth / 2);
+      title.setAttribute("y", page.margin + 30);
+      title.setAttribute("text-anchor", "middle");
+      title.textContent = activeChart.building;
+      svg.appendChild(title);
+
+      const subtitle = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      subtitle.setAttribute("class", "chart-subtitle");
+      subtitle.setAttribute("x", page.pageWidth / 2);
+      subtitle.setAttribute("y", page.margin + 54);
+      subtitle.setAttribute("text-anchor", "middle");
+      subtitle.textContent = `${activeChart.fileName} · ${nodes.length} people`;
+      svg.appendChild(subtitle);
+
+      const chartGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      chartGroup.setAttribute("id", "chartGroup");
+      chartGroup.setAttribute("transform", `translate(${contentX}, ${contentY}) scale(${scale})`);
+      svg.appendChild(chartGroup);
+
+      const connectorLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      const nodeLayer = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      chartGroup.appendChild(connectorLayer);
+      chartGroup.appendChild(nodeLayer);
+
+      renderTree(layoutRoot, connectorLayer, nodeLayer, options);
+
+      el("stats").innerHTML = `
+        <span class="pill">${activeChart.fileStem}</span>
+        <span class="pill">${nodes.length} people</span>
+        <span class="pill">${roots.length} top-level node(s)</span>
+        <span class="pill">${page.label}</span>
+        <span class="pill">Raw layout: ${Math.round(rawWidth)} × ${Math.round(rawHeight)}</span>
+        <span class="pill">Page: ${page.pageWidth} × ${page.pageHeight}</span>
+        <span class="pill">Scale: ${scale.toFixed(2)}x</span>
+        <span class="pill">${editMode ? "Edit mode on" : "Edit mode off"}</span>
+      `;
+
+      el("downloadSvgBtn").disabled = false;
+      el("downloadPngBtn").disabled = false;
+      el("downloadAllSvgBtn").disabled = chartDataSets.length === 0;
+      el("downloadAllPngBtn").disabled = chartDataSets.length === 0;
+      el("editModeBtn").disabled = false;
+      el("resetLayoutBtn").disabled = false;
+
+      persistActiveChartState();
+      updateSelectionPanel();
+    }
+
+    function getDownloadBaseName() {
+      const chart = getActiveChart();
+
+      if (!chart) {
+        return "OrgChart";
+      }
+
+      return `OrgChart_${safeName(chart.fileStem)}_${safeName(chart.building)}`;
+    }
+
+    function triggerBlobDownload(blob, filename) {
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      link.click();
+
+      setTimeout(() => URL.revokeObjectURL(link.href), 500);
+    }
+
+    function waitForAnimationFrame() {
+      return new Promise(resolve => requestAnimationFrame(() => resolve()));
+    }
+
+    function wait(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function serializeCurrentSvg() {
+      const svg = el("chartSvg");
+      return new XMLSerializer().serializeToString(svg);
+    }
+
+    function downloadSVG() {
+      const data = serializeCurrentSvg();
+
+      const blob = new Blob([data], {
+        type: "image/svg+xml;charset=utf-8"
+      });
+
+      triggerBlobDownload(blob, `${getDownloadBaseName()}.svg`);
+    }
+
+    function svgDataToPngBlob(data) {
+      return new Promise((resolve, reject) => {
+        const svg = el("chartSvg");
+        const image = new Image();
+        const svgBlob = new Blob([data], {
+          type: "image/svg+xml;charset=utf-8"
+        });
+
+        const url = URL.createObjectURL(svgBlob);
+
+        image.onload = () => {
+          const canvas = document.createElement("canvas");
+
+          canvas.width = svg.width.baseVal.value;
+          canvas.height = svg.height.baseVal.value;
+
+          const context = canvas.getContext("2d");
+          context.fillStyle = "#ffffff";
+          context.fillRect(0, 0, canvas.width, canvas.height);
+          context.drawImage(image, 0, 0);
+
+          URL.revokeObjectURL(url);
+
+          canvas.toBlob(blob => {
+            if (!blob) {
+              reject(new Error("Could not create PNG blob."));
+              return;
+            }
+
+            resolve(blob);
+          }, "image/png");
+        };
+
+        image.onerror = () => {
+          URL.revokeObjectURL(url);
+          reject(new Error("Could not render SVG as PNG."));
+        };
+
+        image.src = url;
+      });
+    }
+
+    async function downloadPNG() {
+      const data = serializeCurrentSvg();
+      const blob = await svgDataToPngBlob(data);
+      triggerBlobDownload(blob, `${getDownloadBaseName()}.png`);
+    }
+
+    async function downloadAllSVG() {
+      if (!chartDataSets.length) {
+        return;
+      }
+
+      const previousChartId = activeChartId;
+
+      for (const chart of chartDataSets) {
+        el("buildingSelect").value = chart.id;
+        setActiveChart(chart.id);
+        drawChart();
+        await waitForAnimationFrame();
+        downloadSVG();
+        await wait(180);
+      }
+
+      el("buildingSelect").value = previousChartId;
+      setActiveChart(previousChartId);
+      drawChart();
+    }
+
+    async function downloadAllPNG() {
+      if (!chartDataSets.length) {
+        return;
+      }
+
+      const previousChartId = activeChartId;
+
+      for (const chart of chartDataSets) {
+        el("buildingSelect").value = chart.id;
+        setActiveChart(chart.id);
+        drawChart();
+        await waitForAnimationFrame();
+        await downloadPNG();
+        await wait(240);
+      }
+
+      el("buildingSelect").value = previousChartId;
+      setActiveChart(previousChartId);
+      drawChart();
+    }
+
+    el("csvFile").addEventListener("change", async event => {
+      const files = Array.from(event.target.files || []);
+
+      if (!files.length) {
+        return;
+      }
+
+      uploadedSources = [];
+      chartDataSets = [];
+      chartStateStore = new Map();
+      activeSourceId = "";
+      activeChartId = "";
+      allRows = [];
+      manualLayout = new Map();
+      nodeStyles = new Map();
+      connectorStyles = new Map();
+      lastLayoutSignature = "";
+
+      try {
+        for (const [index, file] of files.entries()) {
+          const text = await file.text();
+          const rows = parseCSV(text);
+          const fileStem = safeName(file.name.replace(/\.csv$/i, ""));
+
+          uploadedSources.push({
+            id: `${index}_${fileStem}`,
+            fileName: file.name,
+            fileStem,
+            rows
+          });
+        }
+
+        activeSourceId = uploadedSources[0]?.id || "";
+        rebuildChartDataSets();
+        await logoReady;
+        drawChart();
+      } catch (error) {
+        el("errorBox").textContent = error.message || String(error);
+      }
+    });
+
+    ["idCol", "nameCol", "managerCol"].forEach(id => {
+      el(id).addEventListener("change", () => {
+        if (chartDataSets.length) {
+          drawChart();
+        }
+      });
+    });
+
+    el("buildingCol").addEventListener("change", () => {
+      if (uploadedSources.length) {
+        rebuildChartDataSets(activeChartId);
+        drawChart();
+      }
+    });
+
+    [
+      "autoFit",
+      "titleCol",
+      "typeCol",
+      "areaCol",
+      "boxWidth",
+      "boxHeight",
+      "managerGap",
+      "generationGap",
+      "leafGap",
+      "leafRowGap",
+      "leafSectionGap",
+      "maxLeafRowWidth",
+      "pageMode",
+      "pageMargin",
+      "headerHeight",
+      "showName",
+      "showEmployeeId",
+      "showJobRole",
+      "showTypeOfWork",
+      "showArea",
+      "showBuilding",
+      "showManagerId"
+    ].forEach(id => {
+      el(id).addEventListener("change", drawChart);
+    });
+
+    el("buildingSelect").addEventListener("change", () => {
+      setActiveChart(el("buildingSelect").value);
+      drawChart();
+    });
+
+    el("buildBtn").addEventListener("click", drawChart);
+
+    el("editModeBtn").addEventListener("click", () => {
+      editMode = !editMode;
+      el("editModeBtn").textContent = editMode ? "Edit layout: On" : "Edit layout: Off";
+      drawChart();
+    });
+
+    el("resetLayoutBtn").addEventListener("click", () => {
+      manualLayout.clear();
+      persistActiveChartState();
+      drawChart();
+    });
+
+    el("downloadSvgBtn").addEventListener("click", downloadSVG);
+    el("downloadPngBtn").addEventListener("click", downloadPNG);
+    el("downloadAllSvgBtn").addEventListener("click", downloadAllSVG);
+    el("downloadAllPngBtn").addEventListener("click", downloadAllPNG);
+
+    el("chartSvg").addEventListener("pointermove", updateActiveEdit);
+    el("chartSvg").addEventListener("pointerup", endActiveEdit);
+    el("chartSvg").addEventListener("pointercancel", endActiveEdit);
+
+    el("chartSvg").addEventListener("click", event => {
+      if (event.target.id === "chartSvg") {
+        clearSelection();
+      }
+    });
+
+    el("boxPreset").addEventListener("change", () => {
+      const preset = BOX_PRESETS[el("boxPreset").value];
+
+      if (!preset) return;
+
+      el("boxFill").value = preset.fill;
+      el("boxStroke").value = preset.stroke;
+      el("boxText").value = preset.text;
+    });
+
+    el("applyStyleBtn").addEventListener("click", applyCurrentStyle);
+    el("clearSelectionBtn").addEventListener("click", clearSelection);
+
+    updateSelectionPanel();
+  </script>
+</body>
+</html>
+
