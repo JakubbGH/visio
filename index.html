@@ -500,14 +500,21 @@
         <label>Generation gap<input id="generationGap" type="number" value="72"></label>
         <label>Leaf gap<input id="leafGap" type="number" value="22"></label>
         <label>Leaf row gap<input id="leafRowGap" type="number" value="28"></label>
+        <label>Manager row gap<input id="managerRowGap" type="number" value="36"></label>
         <label>Leaf section gap<input id="leafSectionGap" type="number" value="40"></label>
       </div>
 
       <div class="grid" style="margin-top: 14px;">
         <label>
+          Max manager row width
+          <input id="maxManagerRowWidth" type="number" value="1250">
+          <span class="hint">Wraps manager subtrees to prevent very wide charts.</span>
+        </label>
+
+        <label>
           Max leaf row width
-          <input id="maxLeafRowWidth" type="number" value="1450">
-          <span class="hint">Only people with no reports are wrapped.</span>
+          <input id="maxLeafRowWidth" type="number" value="1250">
+          <span class="hint">Wraps people with no reports.</span>
         </label>
 
         <label>
@@ -531,7 +538,7 @@
       </div>
 
       <p class="hint">
-        Layout editing and style customisation are in the left panel beside the preview. Hold Shift while clicking boxes or connectors to select multiple. Multiple uploaded CSV files are split into separate editable chart tabs by Area value.
+        Layout editing and style customisation are in the left panel beside the preview. Hold Shift while clicking boxes or connectors to select multiple. Multiple uploaded CSV files are split into separate editable chart tabs by Area value. Manager and leaf rows now wrap automatically so large charts stay readable.
       </p>
 
       <p id="errorBox" class="error"></p>
@@ -1070,17 +1077,41 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       const rows = [];
       if (!leaves.length) return rows;
 
-      let current = { items: [], width: 0 };
+      let current = { items: [], width: 0, height: 0 };
 
       leaves.forEach(leaf => {
         const nextWidth = current.items.length ? current.width + gap + boxW : boxW;
 
         if (current.items.length && nextWidth > maxWidth) {
           rows.push(current);
-          current = { items: [leaf], width: boxW };
+          current = { items: [leaf], width: boxW, height: 0 };
         } else {
           current.items.push(leaf);
           current.width = nextWidth;
+        }
+      });
+
+      if (current.items.length) rows.push(current);
+      return rows;
+    }
+
+    function packManagerSubtreesIntoRows(children, maxWidth, gap) {
+      const rows = [];
+      if (!children.length) return rows;
+
+      let current = { items: [], width: 0, height: 0 };
+
+      children.forEach(child => {
+        const childWidth = child.subtreeWidth;
+        const nextWidth = current.items.length ? current.width + gap + childWidth : childWidth;
+
+        if (current.items.length && nextWidth > maxWidth) {
+          rows.push(current);
+          current = { items: [child], width: childWidth, height: child.subtreeHeight };
+        } else {
+          current.items.push(child);
+          current.width = nextWidth;
+          current.height = Math.max(current.height, child.subtreeHeight);
         }
       });
 
@@ -1096,6 +1127,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         node.subtreeWidth = ownW;
         node.subtreeHeight = ownH;
         node.managerRow = [];
+        node.managerRows = [];
         node.leafRows = [];
         return;
       }
@@ -1105,8 +1137,21 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       managerChildren.forEach(child => computeReadableLayout(child, options));
       leafChildren.forEach(child => computeReadableLayout(child, options));
 
-      const managerRowWidth = managerChildren.reduce((sum, child, index) => {
-        return sum + child.subtreeWidth + (index > 0 ? options.managerGap : 0);
+      /*
+        Presentable large-chart layout:
+        - Previously, every manager subtree sat on one very wide row.
+        - Now manager subtrees wrap into multiple rows, the same way leaves do.
+        - This trades a little height for much better box size/readability.
+      */
+      const managerRows = packManagerSubtreesIntoRows(
+        managerChildren,
+        options.maxManagerRowWidth,
+        options.managerGap
+      );
+
+      const managerBlockWidth = managerRows.reduce((max, row) => Math.max(max, row.width), 0);
+      const managerBlockHeight = managerRows.reduce((sum, row, index) => {
+        return sum + row.height + (index > 0 ? options.managerRowGap : 0);
       }, 0);
 
       const leafRows = packLeavesIntoRows(
@@ -1121,16 +1166,12 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         return sum + options.boxH + (index > 0 ? options.leafRowGap : 0);
       }, 0);
 
-      const managerBlockHeight = managerChildren.length
-        ? Math.max(...managerChildren.map(child => child.subtreeHeight))
-        : 0;
-
       let childBlockHeight = 0;
 
-      if (managerChildren.length) childBlockHeight += managerBlockHeight;
-      if (leafRows.length) childBlockHeight += (managerChildren.length ? options.leafSectionGap : 0) + leafBlockHeight;
+      if (managerRows.length) childBlockHeight += managerBlockHeight;
+      if (leafRows.length) childBlockHeight += (managerRows.length ? options.leafSectionGap : 0) + leafBlockHeight;
 
-      const childBlockWidth = Math.max(managerRowWidth, leafBlockWidth);
+      const childBlockWidth = Math.max(managerBlockWidth, leafBlockWidth);
 
       node.subtreeWidth = Math.max(ownW, childBlockWidth);
       node.subtreeHeight = node.isVirtual
@@ -1138,23 +1179,29 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         : ownH + options.generationGap + childBlockHeight;
 
       node.managerRow = managerChildren;
+      node.managerRows = managerRows;
       node.leafRows = leafRows;
 
       let y = node.isVirtual ? 0 : ownH + options.generationGap;
-      let x = (node.subtreeWidth - managerRowWidth) / 2;
 
-      managerChildren.forEach(child => {
-        child.relX = x;
-        child.relY = y;
-        x += child.subtreeWidth + options.managerGap;
+      managerRows.forEach((row, rowIndex) => {
+        let x = (node.subtreeWidth - row.width) / 2;
+
+        row.items.forEach(child => {
+          child.relX = x;
+          child.relY = y;
+          x += child.subtreeWidth + options.managerGap;
+        });
+
+        y += row.height + (rowIndex < managerRows.length - 1 ? options.managerRowGap : 0);
       });
 
-      if (managerChildren.length) {
-        y += managerBlockHeight + (leafRows.length ? options.leafSectionGap : 0);
+      if (managerRows.length && leafRows.length) {
+        y += options.leafSectionGap;
       }
 
       leafRows.forEach(row => {
-        x = (node.subtreeWidth - row.width) / 2;
+        let x = (node.subtreeWidth - row.width) / 2;
 
         row.items.forEach(child => {
           child.relX = x;
@@ -1768,6 +1815,7 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         boxW,
         boxH,
         managerGap,
+        managerRowGap: Math.max(28, Math.round(boxH * 0.48)),
         generationGap,
         leafGap,
         leafRowGap,
@@ -1784,11 +1832,13 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       el("boxWidth").value = fit.boxW;
       el("boxHeight").value = fit.boxH;
       el("managerGap").value = fit.managerGap;
+      el("managerRowGap").value = fit.managerRowGap;
       el("generationGap").value = fit.generationGap;
       el("leafGap").value = fit.leafGap;
       el("leafRowGap").value = fit.leafRowGap;
       el("leafSectionGap").value = fit.leafSectionGap;
-      el("maxLeafRowWidth").value = Math.round(fit.maxLeafRowWidth);
+      el("maxManagerRowWidth").value = Math.round(page.innerWidth * 0.82);
+      el("maxLeafRowWidth").value = Math.round(page.innerWidth * 0.82);
     }
 
     function getLayoutSignature() {
@@ -1800,7 +1850,9 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         el("generationGap").value,
         el("leafGap").value,
         el("leafRowGap").value,
+        el("managerRowGap").value,
         el("leafSectionGap").value,
+        el("maxManagerRowWidth").value,
         el("maxLeafRowWidth").value,
         el("pageMode").value,
         el("pageMargin").value,
@@ -2047,7 +2099,12 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         generationGap: Number(el("generationGap").value) || 72,
         leafGap: Number(el("leafGap").value) || 22,
         leafRowGap: Number(el("leafRowGap").value) || 28,
+        managerRowGap: Number(el("managerRowGap").value) || 36,
         leafSectionGap: Number(el("leafSectionGap").value) || 40,
+        maxManagerRowWidth: Math.min(
+          Number(el("maxManagerRowWidth").value) || page.innerWidth,
+          page.innerWidth
+        ),
         maxLeafRowWidth: Math.min(
           Number(el("maxLeafRowWidth").value) || page.innerWidth,
           page.innerWidth
@@ -2437,7 +2494,9 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       "generationGap",
       "leafGap",
       "leafRowGap",
+      "managerRowGap",
       "leafSectionGap",
+      "maxManagerRowWidth",
       "maxLeafRowWidth",
       "pageMode",
       "pageMargin",
