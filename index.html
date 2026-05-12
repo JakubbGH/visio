@@ -536,7 +536,7 @@
       </div>
 
       <p class="hint">
-        Layout editing and style customisation are in the left panel beside the preview. Hold Shift while clicking boxes or connectors to select multiple. Multiple uploaded CSV files are split into separate editable chart tabs by Building value.
+        Layout editing and style customisation are in the left panel beside the preview. Hold Shift while clicking boxes or connectors to select multiple. Multiple uploaded CSV files are split into separate editable chart tabs by Building value. If a Building cell contains “/”, that person is duplicated into each listed Building chart.
       </p>
 
       <p id="errorBox" class="error"></p>
@@ -660,7 +660,8 @@
       <pre>Employee ID,Name,Manager ID,Job Role,Type of Work,Sub Type of Work,Area,Building
 E00121,Will,,Manager,Electrical,,Area1,Building1
 E00120,Jeremy,E00121,Supervisor,Electrical,,Area1,Building1
-E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
+E00141,John,E00120,Worker,Electrical,,Area1,Building1
+E00142,Sam,E00120,Worker,Electrical,,Area1,Building1 / Building2</pre>
     </section>
   </main>
 
@@ -906,6 +907,26 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
       });
     }
 
+    function getSplitValues(value) {
+      const text = cleanText(value);
+
+      if (!text) {
+        return ["No Building"];
+      }
+
+      /*
+        Building split rule:
+        If a Building cell contains "/", duplicate that person into every listed
+        building chart. Example: "Building1 / Building2" appears in both charts.
+      */
+      const parts = text
+        .split("/")
+        .map(part => cleanText(part))
+        .filter(Boolean);
+
+      return parts.length ? Array.from(new Set(parts)) : ["No Building"];
+    }
+
     function rebuildChartDataSets(preferredChartId = "") {
       const splitCol = el("buildingCol").value;
       const nextCharts = [];
@@ -914,13 +935,23 @@ E00141,John,E00120,Worker,Electrical,,Area1,Building1</pre>
         const grouped = new Map();
 
         source.rows.forEach(row => {
-          const splitValue = cleanText(row[splitCol]) || "No Building";
+          const splitValues = getSplitValues(row[splitCol]);
 
-          if (!grouped.has(splitValue)) {
-            grouped.set(splitValue, []);
-          }
+          splitValues.forEach(splitValue => {
+            if (!grouped.has(splitValue)) {
+              grouped.set(splitValue, []);
+            }
 
-          grouped.get(splitValue).push(row);
+            /*
+              Clone the row for each building chart and set the selected split
+              column to the individual building value. This keeps the displayed
+              Building field clean inside each chart.
+            */
+            grouped.get(splitValue).push({
+              ...row,
+              [splitCol]: splitValue
+            });
+          });
         });
 
         Array.from(grouped.entries())
