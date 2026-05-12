@@ -605,6 +605,10 @@
               Restore removed boxes
             </button>
 
+            <button id="snapSelectedBoxesBtn" class="secondary full-width" type="button" disabled>
+              Snap selected box(es) to grid
+            </button>
+
             <label>
               Snap movement
               <select id="snapEnabled">
@@ -619,7 +623,7 @@
             </label>
 
             <p class="sidebar-hint">
-              Turn edit mode on, then select a box or connector. Hold Shift to select multiple. Drag selected boxes or line handles; movement snaps to rows/columns when snap is on. To add a manual line, select exactly two boxes, then click Add manual line. Select boxes and click Remove selected box(es) to hide them from the current Building chart.
+              Turn edit mode on, then select a box or connector. Hold Shift to select multiple. Drag selected boxes or line handles; final box positions snap to rows/columns when snap is on. To add a manual line, select exactly two boxes, then click Add manual line. Select boxes and click Remove selected box(es) to hide them from the current Building chart.
             </p>
           </div>
 
@@ -1809,6 +1813,10 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
         el("restoreRemovedBoxesBtn").disabled = removedNodeIds.size === 0;
       }
 
+      if (el("snapSelectedBoxesBtn")) {
+        el("snapSelectedBoxesBtn").disabled = !hasNode;
+      }
+
       if (!hasNode && !hasLine) {
         el("selectionHint").textContent = editMode
           ? "Edit mode is on. Select a box or connector. Shift-click to select multiple."
@@ -1970,6 +1978,37 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
         selectedLineKey = "";
       }
 
+      drawChart();
+    }
+
+    function snapSelectedBoxesToGrid() {
+      if (selectedType !== "node" || !selectedNodeIds.size) {
+        return;
+      }
+
+      selectedNodeIds.forEach(id => {
+        const node = lastDrawnNodesById.get(id);
+        const saved = manualLayout.get(id) || {};
+
+        const boxX = Number.isFinite(saved.boxX) ? saved.boxX : node?.boxX;
+        const boxY = Number.isFinite(saved.boxY) ? saved.boxY : node?.boxY;
+        const boxW = Number.isFinite(saved.boxW) ? saved.boxW : node?.boxW;
+        const boxH = Number.isFinite(saved.boxH) ? saved.boxH : node?.boxH;
+
+        if (!Number.isFinite(boxX) || !Number.isFinite(boxY)) {
+          return;
+        }
+
+        manualLayout.set(id, {
+          ...saved,
+          boxX: snapValue(boxX),
+          boxY: snapValue(boxY),
+          boxW,
+          boxH
+        });
+      });
+
+      persistActiveChartState();
       drawChart();
     }
 
@@ -2628,8 +2667,8 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       const point = getChartLocalPoint(event, svg, chartGroup);
 
       if (activeDrag) {
-        const dx = snapDelta(point.x - activeDrag.startX);
-        const dy = snapDelta(point.y - activeDrag.startY);
+        const dx = point.x - activeDrag.startX;
+        const dy = point.y - activeDrag.startY;
 
         if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
           activeDrag.moved = true;
@@ -2638,10 +2677,15 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
         activeDrag.originals.forEach(original => {
           const saved = manualLayout.get(original.id) || {};
 
+          /*
+            Snap final box positions, not just movement distance.
+            This prevents boxes that started a few pixels apart from keeping that
+            misalignment after dragging.
+          */
           manualLayout.set(original.id, {
             ...saved,
-            boxX: original.boxX + dx,
-            boxY: original.boxY + dy,
+            boxX: snapValue(original.boxX + point.x - activeDrag.startX),
+            boxY: snapValue(original.boxY + point.y - activeDrag.startY),
             boxW: original.boxW,
             boxH: original.boxH
           });
@@ -2930,6 +2974,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       el("removeManualLineBtn").disabled = !(selectedType === "line" && Array.from(selectedLineKeys).some(isManualConnectorKey));
       el("removeSelectedBoxesBtn").disabled = !(selectedType === "node" && selectedNodeIds.size > 0);
       el("restoreRemovedBoxesBtn").disabled = removedNodeIds.size === 0;
+      el("snapSelectedBoxesBtn").disabled = !(selectedType === "node" && selectedNodeIds.size > 0);
 
       persistActiveChartState();
       updateSelectionPanel();
@@ -3244,6 +3289,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       el("removeManualLineBtn").disabled = true;
       el("removeSelectedBoxesBtn").disabled = true;
       el("restoreRemovedBoxesBtn").disabled = true;
+      el("snapSelectedBoxesBtn").disabled = true;
 
       el("selectionHint").textContent = "This is a static imported SVG. It can be viewed and re-exported, but not edited unless it was exported from a version that includes editable chart data.";
       el("errorBox").textContent = "";
@@ -3417,6 +3463,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
     el("removeManualLineBtn").addEventListener("click", removeSelectedManualLines);
     el("removeSelectedBoxesBtn").addEventListener("click", removeSelectedBoxes);
     el("restoreRemovedBoxesBtn").addEventListener("click", restoreRemovedBoxes);
+    el("snapSelectedBoxesBtn").addEventListener("click", snapSelectedBoxesToGrid);
 
     el("applyStyleBtn").addEventListener("click", applyCurrentStyle);
     el("clearSelectionBtn").addEventListener("click", clearSelection);
