@@ -432,7 +432,7 @@
         <p class="eyebrow">Browser-only tool</p>
         <h1>CSV Org Chart Builder</h1>
         <p class="lead">
-          Upload your CSV, generate a readable org chart split by Building, adjust the layout visually, customise styles, then export as SVG or PNG.
+          Upload your CSV, generate a readable org chart split by Building, choose a layout style, adjust the layout visually, customise styles, export as SVG or PNG, or reimport previous SVGs.
         </p>
       </div>
       <div class="badge">Editable page-fit layout</div>
@@ -448,6 +448,16 @@
       <h2>1. Upload CSV</h2>
 
       <input id="csvFile" type="file" accept=".csv" multiple>
+
+      <div style="margin-top: 14px;">
+        <label>
+          Import previous SVG
+          <input id="svgImportFile" type="file" accept=".svg,image/svg+xml">
+          <span class="hint">
+            SVGs exported from this version can reopen as editable charts. Older SVGs import as static charts for viewing and re-export.
+          </span>
+        </label>
+      </div>
 
       <div class="grid" style="margin-top: 18px;">
         <label>Employee ID column<input id="idCol" value="Employee ID"></label>
@@ -505,6 +515,17 @@
 
       <div class="grid" style="margin-top: 14px;">
         <label>
+          Layout style
+          <select id="layoutStyle">
+            <option value="classicTree">Classic tree</option>
+            <option value="compactTree">Compact tree</option>
+            <option value="stackedTeams">Stacked teams</option>
+            <option value="hybridTree" selected>Hybrid tree + stacked teams</option>
+          </select>
+          <span class="hint">Choose a positional style that best suits wider org charts.</span>
+        </label>
+
+        <label>
           Max leaf row width
           <input id="maxLeafRowWidth" type="number" value="1650">
           <span class="hint">Only people with no reports are wrapped; increase this for a flatter chart.</span>
@@ -536,7 +557,7 @@
       </div>
 
       <p class="hint">
-        Layout editing and style customisation are in the left panel beside the preview. Hold Shift while clicking boxes or connectors to select multiple. Multiple uploaded CSV files are split into separate editable chart tabs by Building value. If a Building cell contains “/”, that person is duplicated into each listed Building chart. If a Name contains “/”, it is split into separate boxes that share links.
+        Layout editing, layout style selection, and style customisation are in the left panel beside the preview. Hold Shift while clicking boxes or connectors to select multiple. Multiple uploaded CSV files are split into separate editable chart tabs by Building value. If a Building cell contains “/”, that person is duplicated into each listed Building chart. If a Name contains “/”, it is split into separate boxes that share links.
       </p>
 
       <p id="errorBox" class="error"></p>
@@ -695,6 +716,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
     let activeSourceId = "";
     let activeChartId = "";
     let currentFileStem = "org_chart";
+    let staticImportedSvgMode = false;
     const LOGO_PATH = "mehlogo.png";
     let logoDataUrl = "";
 
@@ -1263,23 +1285,48 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       return rows;
     }
 
-    function computeReadableLayout(node, options) {
-      const ownW = node.isVirtual ? 0 : options.boxW;
-      const ownH = node.isVirtual ? 0 : options.boxH;
+    function packSubtreesIntoRows(children, maxWidth, gap) {
+      const rows = [];
+      if (!children.length) return rows;
 
-      if (!node.children.length) {
-        node.subtreeWidth = ownW;
-        node.subtreeHeight = ownH;
-        node.managerRow = [];
-        node.leafRows = [];
-        return;
+      let current = { items: [], width: 0, height: 0 };
+
+      children.forEach(child => {
+        const nextWidth = current.items.length
+          ? current.width + gap + child.subtreeWidth
+          : child.subtreeWidth;
+
+        if (current.items.length && nextWidth > maxWidth) {
+          rows.push(current);
+          current = { items: [child], width: child.subtreeWidth, height: child.subtreeHeight };
+        } else {
+          current.items.push(child);
+          current.width = nextWidth;
+          current.height = Math.max(current.height, child.subtreeHeight);
+        }
+      });
+
+      if (current.items.length) rows.push(current);
+      return rows;
+    }
+
+    function packLeavesIntoColumns(leaves, maxItemsPerColumn, boxW, boxH, colGap, rowGap) {
+      const columns = [];
+      if (!leaves.length) return columns;
+
+      for (let i = 0; i < leaves.length; i += maxItemsPerColumn) {
+        const items = leaves.slice(i, i + maxItemsPerColumn);
+        columns.push({
+          items,
+          width: boxW,
+          height: items.length * boxH + Math.max(0, items.length - 1) * rowGap
+        });
       }
 
-      const { managerChildren, leafChildren } = splitChildren(node);
+      return columns;
+    }
 
-      managerChildren.forEach(child => computeReadableLayout(child, options));
-      leafChildren.forEach(child => computeReadableLayout(child, options));
-
+    function computeClassicLayout(node, options, ownW, ownH, managerChildren, leafChildren) {
       const managerRowWidth = managerChildren.reduce((sum, child, index) => {
         return sum + child.subtreeWidth + (index > 0 ? options.managerGap : 0);
       }, 0);
@@ -1339,6 +1386,201 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
 
         y += options.boxH + options.leafRowGap;
       });
+    }
+
+    function computeCompactLayout(node, options, ownW, ownH, managerChildren, leafChildren) {
+      const managerRows = packSubtreesIntoRows(
+        managerChildren,
+        Math.max(options.boxW * 2.5, options.maxLeafRowWidth * 0.92),
+        options.managerGap
+      );
+
+      const managerBlockWidth = managerRows.reduce((max, row) => Math.max(max, row.width), 0);
+      const managerBlockHeight = managerRows.reduce((sum, row, index) => {
+        return sum + row.height + (index > 0 ? options.generationGap * 0.45 : 0);
+      }, 0);
+
+      const leafRows = packLeavesIntoRows(
+        leafChildren,
+        Math.max(options.boxW * 2.5, options.maxLeafRowWidth * 0.92),
+        options.boxW,
+        options.leafGap
+      );
+
+      const leafBlockWidth = leafRows.reduce((max, row) => Math.max(max, row.width), 0);
+      const leafBlockHeight = leafRows.reduce((sum, row, index) => {
+        return sum + options.boxH + (index > 0 ? options.leafRowGap : 0);
+      }, 0);
+
+      let childBlockHeight = 0;
+      if (managerRows.length) childBlockHeight += managerBlockHeight;
+      if (leafRows.length) childBlockHeight += (managerRows.length ? options.leafSectionGap : 0) + leafBlockHeight;
+
+      node.subtreeWidth = Math.max(ownW, managerBlockWidth, leafBlockWidth);
+      node.subtreeHeight = node.isVirtual
+        ? childBlockHeight
+        : ownH + options.generationGap + childBlockHeight;
+
+      node.managerRow = managerChildren;
+      node.leafRows = leafRows;
+
+      let y = node.isVirtual ? 0 : ownH + options.generationGap;
+
+      managerRows.forEach((row, rowIndex) => {
+        let x = (node.subtreeWidth - row.width) / 2;
+
+        row.items.forEach(child => {
+          child.relX = x;
+          child.relY = y;
+          x += child.subtreeWidth + options.managerGap;
+        });
+
+        y += row.height + (rowIndex < managerRows.length - 1 ? options.generationGap * 0.45 : 0);
+      });
+
+      if (managerRows.length && leafRows.length) {
+        y += options.leafSectionGap;
+      }
+
+      leafRows.forEach(row => {
+        let x = (node.subtreeWidth - row.width) / 2;
+
+        row.items.forEach(child => {
+          child.relX = x;
+          child.relY = y;
+          x += options.boxW + options.leafGap;
+        });
+
+        y += options.boxH + options.leafRowGap;
+      });
+    }
+
+    function computeStackedLayout(node, options, ownW, ownH, managerChildren, leafChildren) {
+      const allChildren = [...managerChildren, ...leafChildren];
+      const stackedGap = Math.max(18, options.generationGap * 0.35);
+
+      const childBlockWidth = allChildren.length
+        ? Math.max(...allChildren.map(child => child.subtreeWidth))
+        : 0;
+
+      const childBlockHeight = allChildren.reduce((sum, child, index) => {
+        return sum + child.subtreeHeight + (index > 0 ? stackedGap : 0);
+      }, 0);
+
+      node.subtreeWidth = Math.max(ownW, childBlockWidth);
+      node.subtreeHeight = node.isVirtual
+        ? childBlockHeight
+        : ownH + options.generationGap + childBlockHeight;
+
+      node.managerRow = managerChildren;
+      node.leafRows = leafChildren.length ? [{ items: leafChildren, width: options.boxW }] : [];
+
+      let y = node.isVirtual ? 0 : ownH + options.generationGap;
+
+      allChildren.forEach((child, index) => {
+        child.relX = (node.subtreeWidth - child.subtreeWidth) / 2;
+        child.relY = y;
+        y += child.subtreeHeight + (index < allChildren.length - 1 ? stackedGap : 0);
+      });
+    }
+
+    function computeHybridLayout(node, options, ownW, ownH, managerChildren, leafChildren) {
+      const managerRowWidth = managerChildren.reduce((sum, child, index) => {
+        return sum + child.subtreeWidth + (index > 0 ? options.managerGap : 0);
+      }, 0);
+
+      const managerBlockHeight = managerChildren.length
+        ? Math.max(...managerChildren.map(child => child.subtreeHeight))
+        : 0;
+
+      const leafColumns = packLeavesIntoColumns(
+        leafChildren,
+        6,
+        options.boxW,
+        options.boxH,
+        options.leafGap + 8,
+        options.leafRowGap
+      );
+
+      const leafBlockWidth = leafColumns.reduce((sum, col, index) => {
+        return sum + col.width + (index > 0 ? options.leafGap + 8 : 0);
+      }, 0);
+
+      const leafBlockHeight = leafColumns.reduce((max, col) => Math.max(max, col.height), 0);
+
+      let childBlockHeight = 0;
+      if (managerChildren.length) childBlockHeight += managerBlockHeight;
+      if (leafColumns.length) childBlockHeight += (managerChildren.length ? options.leafSectionGap : 0) + leafBlockHeight;
+
+      node.subtreeWidth = Math.max(ownW, managerRowWidth, leafBlockWidth);
+      node.subtreeHeight = node.isVirtual
+        ? childBlockHeight
+        : ownH + options.generationGap + childBlockHeight;
+
+      node.managerRow = managerChildren;
+      node.leafRows = leafColumns;
+
+      let y = node.isVirtual ? 0 : ownH + options.generationGap;
+      let x = (node.subtreeWidth - managerRowWidth) / 2;
+
+      managerChildren.forEach(child => {
+        child.relX = x;
+        child.relY = y;
+        x += child.subtreeWidth + options.managerGap;
+      });
+
+      if (managerChildren.length) {
+        y += managerBlockHeight + (leafColumns.length ? options.leafSectionGap : 0);
+      }
+
+      x = (node.subtreeWidth - leafBlockWidth) / 2;
+      leafColumns.forEach((column, colIndex) => {
+        let columnY = y;
+        column.items.forEach((child, childIndex) => {
+          child.relX = x;
+          child.relY = columnY;
+          columnY += options.boxH + (childIndex < column.items.length - 1 ? options.leafRowGap : 0);
+        });
+
+        x += column.width + (colIndex < leafColumns.length - 1 ? options.leafGap + 8 : 0);
+      });
+    }
+
+    function computeReadableLayout(node, options) {
+      const ownW = node.isVirtual ? 0 : options.boxW;
+      const ownH = node.isVirtual ? 0 : options.boxH;
+
+      if (!node.children.length) {
+        node.subtreeWidth = ownW;
+        node.subtreeHeight = ownH;
+        node.managerRow = [];
+        node.leafRows = [];
+        return;
+      }
+
+      const { managerChildren, leafChildren } = splitChildren(node);
+
+      managerChildren.forEach(child => computeReadableLayout(child, options));
+      leafChildren.forEach(child => computeReadableLayout(child, options));
+
+      const style = options.layoutStyle || "classicTree";
+
+      if (style === "compactTree") {
+        computeCompactLayout(node, options, ownW, ownH, managerChildren, leafChildren);
+        return;
+      }
+
+      if (style === "stackedTeams") {
+        computeStackedLayout(node, options, ownW, ownH, managerChildren, leafChildren);
+        return;
+      }
+
+      if (style === "hybridTree") {
+        computeHybridLayout(node, options, ownW, ownH, managerChildren, leafChildren);
+        return;
+      }
+
+      computeClassicLayout(node, options, ownW, ownH, managerChildren, leafChildren);
     }
 
     function assignAbsolutePositions(node, originX, originY, options) {
@@ -2225,6 +2467,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
         el("leafRowGap").value,
         el("leafSectionGap").value,
         el("maxLeafRowWidth").value,
+        el("layoutStyle").value,
         el("pageMode").value,
         el("pageMargin").value,
         el("headerHeight").value,
@@ -2444,6 +2687,10 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       const errorBox = el("errorBox");
       errorBox.textContent = "";
 
+      if (staticImportedSvgMode) {
+        return;
+      }
+
       const activeChart = getActiveChart();
 
       if (!activeChart || !allRows.length) {
@@ -2467,6 +2714,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       const options = {
         boxW,
         boxH,
+        layoutStyle: el("layoutStyle").value || "hybridTree",
         managerGap: Number(el("managerGap").value) || 34,
         generationGap: Number(el("generationGap").value) || 72,
         leafGap: Number(el("leafGap").value) || 22,
@@ -2664,6 +2912,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
         <span class="pill">${nodes.length} people</span>
         <span class="pill">${removedNodeIds.size} removed</span>
         <span class="pill">${roots.length} top-level node(s)</span>
+        <span class="pill">Style: ${options.layoutStyle}</span>
         <span class="pill">${page.label}</span>
         <span class="pill">Raw layout: ${Math.round(rawWidth)} × ${Math.round(rawHeight)}</span>
         <span class="pill">Output: ${outputWidth} × ${outputHeight}</span>
@@ -2713,9 +2962,95 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       return new Promise(resolve => setTimeout(resolve, ms));
     }
 
+    function getSerializableChartState() {
+      const chart = getActiveChart();
+
+      if (!chart || staticImportedSvgMode) {
+        return null;
+      }
+
+      return {
+        version: 1,
+        activeSourceId,
+        activeChartId,
+        uploadedSources,
+        chartStateStore: Array.from(chartStateStore.entries()).map(([id, state]) => [
+          id,
+          {
+            manualLayout: Array.from((state.manualLayout || new Map()).entries()),
+            nodeStyles: Array.from((state.nodeStyles || new Map()).entries()),
+            connectorStyles: Array.from((state.connectorStyles || new Map()).entries()),
+            manualLinks: Array.from(state.manualLinks || []),
+            removedNodeIds: Array.from(state.removedNodeIds || []),
+            lastLayoutSignature: state.lastLayoutSignature || ""
+          }
+        ]),
+        controls: {
+          idCol: el("idCol").value,
+          nameCol: el("nameCol").value,
+          managerCol: el("managerCol").value,
+          buildingCol: el("buildingCol").value,
+          titleCol: el("titleCol").value,
+          typeCol: el("typeCol").value,
+          areaCol: el("areaCol").value,
+          autoFit: el("autoFit").value,
+          boxWidth: el("boxWidth").value,
+          boxHeight: el("boxHeight").value,
+          managerGap: el("managerGap").value,
+          generationGap: el("generationGap").value,
+          leafGap: el("leafGap").value,
+          leafRowGap: el("leafRowGap").value,
+          leafSectionGap: el("leafSectionGap").value,
+          maxLeafRowWidth: el("maxLeafRowWidth").value,
+          layoutStyle: el("layoutStyle").value,
+          pageMode: el("pageMode").value,
+          pageMargin: el("pageMargin").value,
+          headerHeight: el("headerHeight").value,
+          minReadableScale: el("minReadableScale").value,
+          snapEnabled: el("snapEnabled").value,
+          snapSize: el("snapSize").value,
+          showName: el("showName").checked,
+          showEmployeeId: el("showEmployeeId").checked,
+          showJobRole: el("showJobRole").checked,
+          showTypeOfWork: el("showTypeOfWork").checked,
+          showArea: el("showArea").checked,
+          showBuilding: el("showBuilding").checked,
+          showManagerId: el("showManagerId").checked
+        }
+      };
+    }
+
+    function addStateMetadataToSvgClone(svgClone) {
+      const state = getSerializableChartState();
+
+      if (!state) {
+        return;
+      }
+
+      const oldMetadata = svgClone.querySelector("#orgChartBuilderState");
+      if (oldMetadata) {
+        oldMetadata.remove();
+      }
+
+      const metadata = document.createElementNS("http://www.w3.org/2000/svg", "metadata");
+      metadata.setAttribute("id", "orgChartBuilderState");
+      metadata.textContent = JSON.stringify(state);
+
+      const firstChild = svgClone.firstChild;
+      if (firstChild) {
+        svgClone.insertBefore(metadata, firstChild);
+      } else {
+        svgClone.appendChild(metadata);
+      }
+    }
+
     function serializeCurrentSvg() {
       const svg = el("chartSvg");
-      return new XMLSerializer().serializeToString(svg);
+      const clone = svg.cloneNode(true);
+
+      addStateMetadataToSvgClone(clone);
+
+      return new XMLSerializer().serializeToString(clone);
     }
 
     function downloadSVG() {
@@ -2818,6 +3153,128 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       drawChart();
     }
 
+    function deserializeChartStateStore(entries) {
+      const nextStore = new Map();
+
+      (entries || []).forEach(([id, state]) => {
+        nextStore.set(id, {
+          manualLayout: new Map(state.manualLayout || []),
+          nodeStyles: new Map(state.nodeStyles || []),
+          connectorStyles: new Map(state.connectorStyles || []),
+          manualLinks: new Set(state.manualLinks || []),
+          removedNodeIds: new Set(state.removedNodeIds || []),
+          lastLayoutSignature: state.lastLayoutSignature || ""
+        });
+      });
+
+      return nextStore;
+    }
+
+    function applyImportedControls(controls = {}) {
+      Object.entries(controls).forEach(([id, value]) => {
+        const control = el(id);
+        if (!control) return;
+
+        if (control.type === "checkbox") {
+          control.checked = Boolean(value);
+        } else {
+          control.value = value;
+        }
+      });
+    }
+
+    async function importEditableSvgState(state) {
+      staticImportedSvgMode = false;
+
+      uploadedSources = state.uploadedSources || [];
+      chartStateStore = deserializeChartStateStore(state.chartStateStore || []);
+      activeSourceId = state.activeSourceId || uploadedSources[0]?.id || "";
+      activeChartId = state.activeChartId || "";
+
+      applyImportedControls(state.controls || {});
+
+      rebuildChartDataSets(activeChartId);
+      setActiveChart(activeChartId || chartDataSets[0]?.id || "");
+      updateBuildingSelect(activeChartId);
+      await logoReady;
+      drawChart();
+
+      el("errorBox").textContent = "";
+    }
+
+    function importStaticSvg(svgDocument, fileName) {
+      staticImportedSvgMode = true;
+
+      const importedSvg = svgDocument.documentElement;
+      const targetSvg = el("chartSvg");
+
+      targetSvg.replaceChildren(...Array.from(importedSvg.childNodes).map(node => document.importNode(node, true)));
+
+      const viewBox = importedSvg.getAttribute("viewBox");
+      const width = importedSvg.getAttribute("width") || "1587";
+      const height = importedSvg.getAttribute("height") || "1123";
+
+      if (viewBox) targetSvg.setAttribute("viewBox", viewBox);
+      targetSvg.setAttribute("width", width);
+      targetSvg.setAttribute("height", height);
+
+      staticImportedSvgMode = false;
+
+      uploadedSources = [];
+      chartDataSets = [];
+      chartStateStore = new Map();
+      activeSourceId = "";
+      activeChartId = "";
+      allRows = [];
+
+      el("fileTabs").hidden = true;
+      el("stats").innerHTML = `
+        <span class="pill">${safeName(fileName || "Imported SVG")}</span>
+        <span class="pill">Static SVG import</span>
+        <span class="pill">Editable source data not found</span>
+      `;
+
+      el("downloadSvgBtn").disabled = false;
+      el("downloadPngBtn").disabled = false;
+      el("downloadAllSvgBtn").disabled = true;
+      el("downloadAllPngBtn").disabled = true;
+      el("editModeBtn").disabled = true;
+      el("resetLayoutBtn").disabled = true;
+      el("addManualLineBtn").disabled = true;
+      el("removeManualLineBtn").disabled = true;
+      el("removeSelectedBoxesBtn").disabled = true;
+      el("restoreRemovedBoxesBtn").disabled = true;
+
+      el("selectionHint").textContent = "This is a static imported SVG. It can be viewed and re-exported, but not edited unless it was exported from a version that includes editable chart data.";
+      el("errorBox").textContent = "";
+    }
+
+    async function importSvgFile(file) {
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(text, "image/svg+xml");
+
+        const parseError = doc.querySelector("parsererror");
+        if (parseError || !doc.documentElement || doc.documentElement.tagName.toLowerCase() !== "svg") {
+          throw new Error("Could not read this SVG file.");
+        }
+
+        const metadata = doc.querySelector("#orgChartBuilderState");
+
+        if (metadata?.textContent?.trim()) {
+          const state = JSON.parse(metadata.textContent);
+          await importEditableSvgState(state);
+        } else {
+          importStaticSvg(doc, file.name);
+        }
+      } catch (error) {
+        el("errorBox").textContent = error.message || String(error);
+      }
+    }
+
     el("csvFile").addEventListener("change", async event => {
       const files = Array.from(event.target.files || []);
 
@@ -2861,6 +3318,11 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       }
     });
 
+    el("svgImportFile").addEventListener("change", async event => {
+      const file = event.target.files?.[0];
+      await importSvgFile(file);
+    });
+
     ["idCol", "nameCol", "managerCol"].forEach(id => {
       el(id).addEventListener("change", () => {
         if (chartDataSets.length) {
@@ -2889,6 +3351,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       "leafRowGap",
       "leafSectionGap",
       "maxLeafRowWidth",
+      "layoutStyle",
       "pageMode",
       "pageMargin",
       "headerHeight",
