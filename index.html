@@ -536,7 +536,7 @@
       </div>
 
       <p class="hint">
-        Layout editing and style customisation are in the left panel beside the preview. Hold Shift while clicking boxes or connectors to select multiple. Multiple uploaded CSV files are split into separate editable chart tabs by Building value. If a Building cell contains “/”, that person is duplicated into each listed Building chart.
+        Layout editing and style customisation are in the left panel beside the preview. Hold Shift while clicking boxes or connectors to select multiple. Multiple uploaded CSV files are split into separate editable chart tabs by Building value. If a Building cell contains “/”, that person is duplicated into each listed Building chart. If a Name contains “/”, it is split into separate boxes that share links.
       </p>
 
       <p id="errorBox" class="error"></p>
@@ -682,7 +682,8 @@
 E00121,Will,,Manager,Electrical,,Area1,Building1
 E00120,Jeremy,E00121,Supervisor,Electrical,,Area1,Building1
 E00141,John,E00120,Worker,Electrical,,Area1,Building1
-E00142,Sam,E00120,Worker,Electrical,,Area1,Building1 / Building2</pre>
+E00142,Sam,E00120,Worker,Electrical,,Area1,Building1 / Building2
+E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
     </section>
   </main>
 
@@ -1078,49 +1079,125 @@ E00142,Sam,E00120,Worker,Electrical,,Area1,Building1 / Building2</pre>
       renderFileTabs();
     }
 
+    function getNameParts(name) {
+      const text = cleanText(name);
+
+      if (!text) {
+        return [];
+      }
+
+      /*
+        Name split rule:
+        If a Name cell contains "/", create one visual box for each listed person.
+        Example: "Alex / Sam" becomes two boxes: Alex and Sam.
+      */
+      const parts = text
+        .split("/")
+        .map(part => cleanText(part))
+        .filter(Boolean);
+
+      return parts.length > 1 ? Array.from(new Set(parts)) : [text];
+    }
+
+    function makeSplitNodeId(employeeId, index) {
+      return `${employeeId}__split_${index + 1}`;
+    }
+
+    function getBaseEmployeeIdFromNodeId(nodeId) {
+      return String(nodeId || "").replace(/__split_\d+$/, "");
+    }
+
     function buildHierarchy(rows) {
       const idCol = el("idCol").value;
       const nameCol = el("nameCol").value;
       const managerCol = el("managerCol").value;
 
       const nodes = new Map();
+      const originalIdToNodeIds = new Map();
 
       rows.forEach(row => {
-        const id = cleanText(row[idCol]);
-        const name = cleanText(row[nameCol]);
+        const originalId = cleanText(row[idCol]);
+        const originalName = cleanText(row[nameCol]);
 
-        if (!id || removedNodeIds.has(id) || !name) return;
+        if (!originalId || removedNodeIds.has(originalId) || !originalName) return;
 
-        nodes.set(id, {
-          id,
-          name,
-          managerId: cleanText(row[managerCol]),
-          row,
-          children: [],
-          managerRow: [],
-          leafRows: [],
-          relX: 0,
-          relY: 0,
-          subtreeWidth: 0,
-          subtreeHeight: 0,
-          boxX: 0,
-          boxY: 0,
-          boxW: 0,
-          boxH: 0,
-          centerX: 0,
-          centerY: 0,
-          isVirtual: false
+        const nameParts = getNameParts(originalName);
+
+        nameParts.forEach((namePart, index) => {
+          const nodeId = nameParts.length > 1
+            ? makeSplitNodeId(originalId, index)
+            : originalId;
+
+          if (removedNodeIds.has(nodeId)) return;
+
+          const displayRow = {
+            ...row,
+            [nameCol]: namePart
+          };
+
+          nodes.set(nodeId, {
+            id: nodeId,
+            originalEmployeeId: originalId,
+            splitIndex: index,
+            splitCount: nameParts.length,
+            name: namePart,
+            managerId: cleanText(row[managerCol]),
+            row: displayRow,
+            children: [],
+            managerRow: [],
+            leafRows: [],
+            sharedParentIds: [],
+            relX: 0,
+            relY: 0,
+            subtreeWidth: 0,
+            subtreeHeight: 0,
+            boxX: 0,
+            boxY: 0,
+            boxW: 0,
+            boxH: 0,
+            centerX: 0,
+            centerY: 0,
+            isVirtual: false
+          });
+
+          if (!originalIdToNodeIds.has(originalId)) {
+            originalIdToNodeIds.set(originalId, []);
+          }
+
+          originalIdToNodeIds.get(originalId).push(nodeId);
         });
       });
 
       const roots = [];
 
       nodes.forEach(node => {
-        if (!node.managerId || node.managerId === node.id || !nodes.has(node.managerId)) {
+        const managerOriginalId = cleanText(node.managerId);
+        const managerNodeIds = originalIdToNodeIds.get(managerOriginalId) || [];
+
+        if (
+          !managerOriginalId ||
+          managerOriginalId === node.originalEmployeeId ||
+          !managerNodeIds.length
+        ) {
           node.managerId = "";
           roots.push(node);
+          return;
+        }
+
+        /*
+          Layout rule for split manager names:
+          Attach the child subtree to the first manager box for layout stability,
+          then draw extra shared connectors from the other split manager boxes.
+          This avoids duplicating whole subtrees while still showing shared links.
+        */
+        const primaryManagerId = managerNodeIds[0];
+        node.managerId = primaryManagerId;
+        node.sharedParentIds = managerNodeIds.slice(1);
+
+        if (nodes.has(primaryManagerId)) {
+          nodes.get(primaryManagerId).children.push(node);
         } else {
-          nodes.get(node.managerId).children.push(node);
+          roots.push(node);
         }
       });
 
@@ -1797,6 +1874,33 @@ E00142,Sam,E00120,Worker,Electrical,,Area1,Building1 / Building2</pre>
       const match = String(key || "").match(/^manual:(.+)=>(.+)$/);
       if (!match) return null;
       return { fromId: match[1], toId: match[2] };
+    }
+
+    function drawSharedSplitNameConnectors(layer, options) {
+      lastDrawnNodesById.forEach(childNode => {
+        if (!childNode.sharedParentIds || !childNode.sharedParentIds.length) return;
+
+        childNode.sharedParentIds.forEach(parentId => {
+          if (removedNodeIds.has(parentId) || removedNodeIds.has(childNode.id)) return;
+
+          const parentNode = lastDrawnNodesById.get(parentId);
+          if (!parentNode) return;
+
+          const connectorKey = `split:${parentNode.id}=>${childNode.id}`;
+          const style = getConnectorStyleByKey(connectorKey);
+          const start = getConnectionPoint(parentNode, style.parentSide, options);
+          const end = getConnectionPoint(childNode, style.childSide, options);
+
+          drawPath(layer, buildElbowPath(start, end, style), {
+            stroke: style.stroke,
+            style: style.style,
+            connectorKey,
+            clickHandler: event => selectLineKey(connectorKey, event.shiftKey)
+          });
+
+          drawLineHandle(layer, start, end, style, connectorKey);
+        });
+      });
     }
 
     function drawManualConnectors(layer, options) {
@@ -2551,6 +2655,7 @@ E00142,Sam,E00120,Worker,Electrical,,Area1,Building1 / Building2</pre>
       chartGroup.appendChild(nodeLayer);
 
       renderTree(layoutRoot, connectorLayer, nodeLayer, options);
+      drawSharedSplitNameConnectors(connectorLayer, options);
       drawManualConnectors(connectorLayer, options);
 
       el("stats").innerHTML = `
