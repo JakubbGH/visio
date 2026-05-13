@@ -539,7 +539,7 @@
             <option value="stackedTeams">Stacked teams</option>
             <option value="hybridTree" selected>Hybrid tree + stacked teams</option>
           </select>
-          <span class="hint">Choose a positional style that best suits wider org charts.</span>
+          <span class="hint">Choose a positional style that best suits wider org charts. Supervisor, Manager, and Superintendent titles are prioritised higher in the layout.</span>
         </label>
 
         <label>
@@ -574,7 +574,7 @@
       </div>
 
       <p class="hint">
-        Layout editing, layout style selection, and style customisation are in the left panel beside the preview. Click boxes or connectors to toggle them in or out of the current selection. Multiple uploaded CSV files are split into separate editable chart tabs by Building value. If a Building cell contains “/”, that person is duplicated into each listed Building chart. If a Name contains “/”, it is split into separate boxes that share links.
+        Layout editing, layout style selection, and style customisation are in the left panel beside the preview. Click boxes or connectors to toggle them in or out of the current selection. Multiple uploaded CSV files are split into separate editable chart tabs by Building value. If a Building cell contains “/”, that person is duplicated into each listed Building chart. If a Name contains “/”, it is split into separate boxes that share links. Supervisor, Manager, and Superintendent job titles are placed higher in the layout even without direct reports.
       </p>
 
       <p id="errorBox" class="error"></p>
@@ -1414,14 +1414,42 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       return !node.children || node.children.length === 0;
     }
 
+    function isLeadershipTitle(node) {
+      const titleCol = el("titleCol").value;
+      const title = cleanText(node?.row?.[titleCol]).toLowerCase();
+
+      /*
+        Layout priority rule:
+        People with leadership titles should sit closer to the top of the chart,
+        even if they do not currently have direct reports in the CSV.
+      */
+      return /\b(supervisor|manager|superintendent)\b/.test(title);
+    }
+
     function splitChildren(node) {
       const managerChildren = [];
       const leafChildren = [];
 
       node.children.forEach(child => {
-        if (isLeaf(child)) leafChildren.push(child);
-        else managerChildren.push(child);
+        if (!isLeaf(child) || isLeadershipTitle(child)) {
+          managerChildren.push(child);
+        } else {
+          leafChildren.push(child);
+        }
       });
+
+      managerChildren.sort((a, b) => {
+        const aLead = isLeadershipTitle(a) ? 0 : 1;
+        const bLead = isLeadershipTitle(b) ? 0 : 1;
+
+        if (aLead !== bLead) {
+          return aLead - bLead;
+        }
+
+        return a.name.localeCompare(b.name);
+      });
+
+      leafChildren.sort((a, b) => a.name.localeCompare(b.name));
 
       return { managerChildren, leafChildren };
     }
