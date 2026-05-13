@@ -3482,6 +3482,10 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       pageRect.setAttribute("y", 0.5);
       pageRect.setAttribute("width", outputWidth - 1);
       pageRect.setAttribute("height", outputHeight - 1);
+      pageRect.addEventListener("click", event => {
+        event.stopPropagation();
+        clearSelection();
+      });
       svg.appendChild(pageRect);
 
       if (logoDataUrl) {
@@ -4058,7 +4062,12 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
     el("chartSvg").addEventListener("pointercancel", endActiveEdit);
 
     el("chartSvg").addEventListener("click", event => {
-      if (event.target.id === "chartSvg") {
+      const target = event.target;
+
+      if (
+        target.id === "chartSvg" ||
+        target.classList?.contains("page-border")
+      ) {
         clearSelection();
       }
     });
