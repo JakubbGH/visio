@@ -364,6 +364,7 @@
       border-radius: 14px;
       box-shadow: 0 10px 30px rgba(15, 23, 42, 0.10);
       touch-action: none;
+      transform-origin: top left;
     }
 
     .stats {
@@ -583,6 +584,34 @@
       <h2>2. Chart</h2>
 
       <div id="fileTabs" class="file-tabs chart-file-tabs" hidden></div>
+
+      <div class="grid" style="margin: 8px 0 16px;">
+        <label>
+          Canvas zoom
+          <select id="canvasZoom">
+            <option value="0.25">25%</option>
+            <option value="0.35">35%</option>
+            <option value="0.5">50%</option>
+            <option value="0.65">65%</option>
+            <option value="0.8">80%</option>
+            <option value="1" selected>100%</option>
+            <option value="1.25">125%</option>
+            <option value="1.5">150%</option>
+            <option value="2">200%</option>
+          </select>
+          <span class="hint">Preview only. Exports keep the full chart size.</span>
+        </label>
+
+        <label>
+          Zoom action
+          <button id="fitToViewBtn" class="secondary full-width" type="button" disabled>Fit chart to view</button>
+        </label>
+
+        <label>
+          Reset zoom
+          <button id="resetZoomBtn" class="secondary full-width" type="button">Reset to 100%</button>
+        </label>
+      </div>
 
       <div class="stats" id="stats"></div>
 
@@ -3216,6 +3245,60 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       } catch (error) {}
     }
 
+    function getCanvasZoom() {
+      return Math.max(0.1, Number(el("canvasZoom")?.value) || 1);
+    }
+
+    function applyCanvasZoom() {
+      const svg = el("chartSvg");
+      if (!svg) return;
+
+      const zoom = getCanvasZoom();
+      const baseWidth = Number(svg.dataset.baseWidth || svg.getAttribute("width") || 0);
+      const baseHeight = Number(svg.dataset.baseHeight || svg.getAttribute("height") || 0);
+
+      if (!baseWidth || !baseHeight) {
+        return;
+      }
+
+      /*
+        Preview-only zoom:
+        Keep the SVG's internal/export dimensions intact, but change its displayed
+        CSS size so the user can zoom out and inspect the whole structure.
+      */
+      svg.style.width = `${Math.max(1, baseWidth * zoom)}px`;
+      svg.style.height = `${Math.max(1, baseHeight * zoom)}px`;
+    }
+
+    function fitChartToView() {
+      const svg = el("chartSvg");
+      const wrap = el("chartWrap");
+
+      const baseWidth = Number(svg.dataset.baseWidth || svg.getAttribute("width") || 0);
+      const baseHeight = Number(svg.dataset.baseHeight || svg.getAttribute("height") || 0);
+
+      if (!baseWidth || !baseHeight || !wrap) {
+        return;
+      }
+
+      const availableWidth = Math.max(240, wrap.clientWidth - 28);
+      const availableHeight = Math.max(240, wrap.clientHeight - 28);
+
+      const fit = Math.min(1, availableWidth / baseWidth, availableHeight / baseHeight);
+      const options = Array.from(el("canvasZoom").options).map(option => Number(option.value));
+      const best = options.reduce((closest, option) => {
+        return Math.abs(option - fit) < Math.abs(closest - fit) ? option : closest;
+      }, options[0]);
+
+      el("canvasZoom").value = String(best);
+      applyCanvasZoom();
+    }
+
+    function resetCanvasZoom() {
+      el("canvasZoom").value = "1";
+      applyCanvasZoom();
+    }
+
     function drawChart() {
       const errorBox = el("errorBox");
       errorBox.textContent = "";
@@ -3330,6 +3413,8 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       svg.setAttribute("width", outputWidth);
       svg.setAttribute("height", outputHeight);
       svg.setAttribute("viewBox", `0 0 ${outputWidth} ${outputHeight}`);
+      svg.dataset.baseWidth = outputWidth;
+      svg.dataset.baseHeight = outputHeight;
       svg.innerHTML = "";
 
       const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
@@ -3453,11 +3538,13 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
         <span class="pill">Raw layout: ${Math.round(rawWidth)} × ${Math.round(rawHeight)}</span>
         <span class="pill">Output: ${outputWidth} × ${outputHeight}</span>
         <span class="pill">Scale: ${scale.toFixed(2)}x</span>
+        <span class="pill">Preview zoom: ${(getCanvasZoom() * 100).toFixed(0)}%</span>
         <span class="pill">${editMode ? "Edit mode on" : "Edit mode off"}</span>
       `;
 
       el("downloadSvgBtn").disabled = false;
       el("downloadPngBtn").disabled = false;
+      el("fitToViewBtn").disabled = false;
       el("downloadAllSvgBtn").disabled = chartDataSets.length === 0;
       el("downloadAllPngBtn").disabled = chartDataSets.length === 0;
       el("editModeBtn").disabled = false;
@@ -3474,8 +3561,11 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       el("applyChartTitleBtn").disabled = false;
       el("resetChartTitleBtn").disabled = !chartTitleOverrides.has(activeChart.id);
 
+      el("fitToViewBtn").disabled = false;
+
       persistActiveChartState();
       updateSelectionPanel();
+      applyCanvasZoom();
     }
 
     function getDownloadBaseName() {
@@ -3768,6 +3858,9 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       if (viewBox) targetSvg.setAttribute("viewBox", viewBox);
       targetSvg.setAttribute("width", width);
       targetSvg.setAttribute("height", height);
+      targetSvg.dataset.baseWidth = Number.parseFloat(width) || 1587;
+      targetSvg.dataset.baseHeight = Number.parseFloat(height) || 1123;
+      applyCanvasZoom();
 
       staticImportedSvgMode = false;
 
@@ -3950,6 +4043,10 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       persistActiveChartState();
       drawChart();
     });
+
+    el("canvasZoom").addEventListener("change", applyCanvasZoom);
+    el("fitToViewBtn").addEventListener("click", fitChartToView);
+    el("resetZoomBtn").addEventListener("click", resetCanvasZoom);
 
     el("downloadSvgBtn").addEventListener("click", downloadSVG);
     el("downloadPngBtn").addEventListener("click", downloadPNG);
