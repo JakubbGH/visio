@@ -644,6 +644,31 @@
           </div>
 
           <div class="sidebar-section">
+            <h4>Edit selected box details</h4>
+
+            <label>Name<input id="editBoxName" placeholder="Select one box first" disabled></label>
+            <label>Employee ID<input id="editBoxEmployeeId" disabled></label>
+            <label>Manager ID<input id="editBoxManagerId" disabled></label>
+            <label>Job Role<input id="editBoxJobRole" disabled></label>
+            <label>Type of Work<input id="editBoxTypeOfWork" disabled></label>
+            <label>Area<input id="editBoxArea" disabled></label>
+            <label>Building<input id="editBoxBuilding" disabled></label>
+
+            <div class="sidebar-actions">
+              <button id="applyBoxDetailsBtn" type="button" disabled>
+                Apply box details
+              </button>
+              <button id="resetBoxDetailsBtn" class="secondary" type="button" disabled>
+                Reset selected box details
+              </button>
+            </div>
+
+            <p class="sidebar-hint">
+              Select exactly one box to edit its displayed details for this Building chart. Editing Employee ID or Manager ID can change links in this chart.
+            </p>
+          </div>
+
+          <div class="sidebar-section">
             <h4>Add new box</h4>
 
             <label>Name<input id="newBoxName" placeholder="New person name"></label>
@@ -790,6 +815,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
     let customRows = [];
     let managerOverrides = new Map();
     let chartTitleOverrides = new Map();
+    let boxDetailOverrides = new Map();
 
     const BOX_PRESETS = {
       green: { fill: "#ffffff", stroke: "#00843D", text: "#172033" },
@@ -927,6 +953,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
         customRows: [],
         managerOverrides: new Map(),
         chartTitleOverrides: new Map(),
+        boxDetailOverrides: new Map(),
         lastLayoutSignature: ""
       };
     }
@@ -954,6 +981,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
         input.disabled = true;
         el("applyChartTitleBtn").disabled = true;
         el("resetChartTitleBtn").disabled = true;
+      setEditBoxControlsEnabled(false);
         return;
       }
 
@@ -977,6 +1005,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
         customRows = [];
         managerOverrides = new Map();
         chartTitleOverrides = new Map();
+        boxDetailOverrides = new Map();
         lastLayoutSignature = "";
         return;
       }
@@ -993,6 +1022,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       customRows = chart.state.customRows || [];
       managerOverrides = chart.state.managerOverrides || new Map();
       chartTitleOverrides = chart.state.chartTitleOverrides || new Map();
+      boxDetailOverrides = chart.state.boxDetailOverrides || new Map();
       lastLayoutSignature = chart.state.lastLayoutSignature || "";
 
       selectedType = "";
@@ -1018,6 +1048,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       chart.state.customRows = customRows;
       chart.state.managerOverrides = managerOverrides;
       chart.state.chartTitleOverrides = chartTitleOverrides;
+      chart.state.boxDetailOverrides = boxDetailOverrides;
       chart.state.lastLayoutSignature = lastLayoutSignature;
       chartStateStore.set(chart.id, chart.state);
     }
@@ -1228,8 +1259,15 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       const nodes = new Map();
       const originalIdToNodeIds = new Map();
 
-      rows.forEach(row => {
-        const originalId = cleanText(row[idCol]);
+      rows.forEach(sourceRow => {
+        const sourceId = cleanText(sourceRow[idCol]);
+        const override = boxDetailOverrides.get(sourceId) || {};
+        const row = {
+          ...sourceRow,
+          ...override
+        };
+
+        const originalId = cleanText(row[idCol]) || sourceId;
         const originalName = cleanText(row[nameCol]);
 
         if (!originalId || removedNodeIds.has(originalId) || !originalName) return;
@@ -1867,6 +1905,148 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       return computeConnectorRoute(start, end, style).path;
     }
 
+    function getBoxDetailKey(nodeOrId) {
+      if (typeof nodeOrId === "string") {
+        return getBaseEmployeeIdFromNodeId(nodeOrId);
+      }
+
+      return cleanText(nodeOrId?.originalEmployeeId || getBaseEmployeeIdFromNodeId(nodeOrId?.id) || nodeOrId?.id);
+    }
+
+    function getEffectiveRowForNode(node) {
+      if (!node) return {};
+
+      const key = getBoxDetailKey(node);
+      const override = boxDetailOverrides.get(key) || {};
+
+      return {
+        ...node.row,
+        ...override
+      };
+    }
+
+    function setEditBoxControlsEnabled(enabled) {
+      [
+        "editBoxName",
+        "editBoxEmployeeId",
+        "editBoxManagerId",
+        "editBoxJobRole",
+        "editBoxTypeOfWork",
+        "editBoxArea",
+        "editBoxBuilding"
+      ].forEach(id => {
+        if (el(id)) el(id).disabled = !enabled;
+      });
+
+      if (el("applyBoxDetailsBtn")) el("applyBoxDetailsBtn").disabled = !enabled;
+      if (el("resetBoxDetailsBtn")) {
+        const selectedId = selectedNodeIds.size === 1 ? Array.from(selectedNodeIds)[0] : "";
+        el("resetBoxDetailsBtn").disabled = !enabled || !boxDetailOverrides.has(getBoxDetailKey(selectedId));
+      }
+    }
+
+    function syncEditBoxDetailsPanel() {
+      const hasSingleNode = selectedType === "node" && selectedNodeIds.size === 1;
+      const selectedId = hasSingleNode ? Array.from(selectedNodeIds)[0] : "";
+      const node = selectedId ? lastDrawnNodesById.get(selectedId) : null;
+
+      if (!hasSingleNode || !node) {
+        [
+          "editBoxName",
+          "editBoxEmployeeId",
+          "editBoxManagerId",
+          "editBoxJobRole",
+          "editBoxTypeOfWork",
+          "editBoxArea",
+          "editBoxBuilding"
+        ].forEach(id => {
+          if (el(id)) el(id).value = "";
+        });
+
+        setEditBoxControlsEnabled(false);
+        return;
+      }
+
+      const idCol = el("idCol").value;
+      const nameCol = el("nameCol").value;
+      const managerCol = el("managerCol").value;
+      const titleCol = el("titleCol").value;
+      const typeCol = el("typeCol").value;
+      const areaCol = el("areaCol").value;
+      const buildingCol = el("buildingCol").value;
+      const effectiveRow = getEffectiveRowForNode(node);
+
+      el("editBoxName").value = cleanText(effectiveRow[nameCol] || node.name);
+      el("editBoxEmployeeId").value = cleanText(effectiveRow[idCol] || getNodeEmployeeId(node));
+      el("editBoxManagerId").value = cleanText(effectiveRow[managerCol] || node.originalManagerId || node.managerId);
+      el("editBoxJobRole").value = cleanText(effectiveRow[titleCol]);
+      el("editBoxTypeOfWork").value = cleanText(effectiveRow[typeCol]);
+      el("editBoxArea").value = cleanText(effectiveRow[areaCol]);
+      el("editBoxBuilding").value = cleanText(effectiveRow[buildingCol] || getActiveChart()?.building);
+
+      setEditBoxControlsEnabled(true);
+    }
+
+    function applySelectedBoxDetails() {
+      if (selectedType !== "node" || selectedNodeIds.size !== 1) {
+        return;
+      }
+
+      const selectedId = Array.from(selectedNodeIds)[0];
+      const node = lastDrawnNodesById.get(selectedId);
+      if (!node) return;
+
+      const idCol = el("idCol").value;
+      const nameCol = el("nameCol").value;
+      const managerCol = el("managerCol").value;
+      const titleCol = el("titleCol").value;
+      const typeCol = el("typeCol").value;
+      const areaCol = el("areaCol").value;
+      const buildingCol = el("buildingCol").value;
+
+      const key = getBoxDetailKey(node);
+      const newEmployeeId = cleanText(el("editBoxEmployeeId").value) || key;
+      const newManagerId = cleanText(el("editBoxManagerId").value);
+
+      boxDetailOverrides.set(key, {
+        [nameCol]: cleanText(el("editBoxName").value) || node.name,
+        [idCol]: newEmployeeId,
+        [managerCol]: newManagerId,
+        [titleCol]: cleanText(el("editBoxJobRole").value),
+        [typeCol]: cleanText(el("editBoxTypeOfWork").value),
+        [areaCol]: cleanText(el("editBoxArea").value),
+        [buildingCol]: cleanText(el("editBoxBuilding").value) || getActiveChart()?.building || ""
+      });
+
+      managerOverrides.set(key, newManagerId);
+
+      persistActiveChartState();
+      drawChart();
+
+      selectedType = "node";
+      selectedNodeIds.clear();
+      selectedNodeIds.add(newEmployeeId);
+      selectedNodeId = newEmployeeId;
+
+      updateSelectionPanel();
+      drawChart();
+    }
+
+    function resetSelectedBoxDetails() {
+      if (selectedType !== "node" || selectedNodeIds.size !== 1) {
+        return;
+      }
+
+      const selectedId = Array.from(selectedNodeIds)[0];
+      const key = getBoxDetailKey(selectedId);
+
+      boxDetailOverrides.delete(key);
+      managerOverrides.delete(key);
+
+      persistActiveChartState();
+      drawChart();
+    }
+
     function applyChartTitle() {
       const chart = getActiveChart();
       if (!chart) return;
@@ -1905,6 +2085,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       updateSelectionPanel();
     syncChartTitleInput();
+    syncEditBoxDetailsPanel();
       drawChart();
     }
 
@@ -1950,6 +2131,8 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       if (el("insertAboveSelectedBtn")) {
         el("insertAboveSelectedBtn").disabled = !(hasNode && nodeCount >= 1 && getActiveChart());
       }
+
+      syncEditBoxDetailsPanel();
 
       if (!hasNode && !hasLine) {
         el("selectionHint").textContent = editMode
@@ -2319,6 +2502,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
         removedNodeIds.add(id);
         manualLayout.delete(id);
         nodeStyles.delete(id);
+        boxDetailOverrides.delete(getBaseEmployeeIdFromNodeId(id));
         managerOverrides.delete(getBaseEmployeeIdFromNodeId(id));
 
         Array.from(managerOverrides.entries()).forEach(([employeeId, managerId]) => {
@@ -3344,6 +3528,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
             customRows: state.customRows || [],
             managerOverrides: Array.from((state.managerOverrides || new Map()).entries()),
             chartTitleOverrides: Array.from((state.chartTitleOverrides || new Map()).entries()),
+            boxDetailOverrides: Array.from((state.boxDetailOverrides || new Map()).entries()),
             lastLayoutSignature: state.lastLayoutSignature || ""
           }
         ]),
@@ -3528,6 +3713,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
           customRows: state.customRows || [],
           managerOverrides: new Map(state.managerOverrides || []),
           chartTitleOverrides: new Map(state.chartTitleOverrides || []),
+          boxDetailOverrides: new Map(state.boxDetailOverrides || []),
           lastLayoutSignature: state.lastLayoutSignature || ""
         });
       });
@@ -3616,6 +3802,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       el("chartTitleInput").disabled = true;
       el("applyChartTitleBtn").disabled = true;
       el("resetChartTitleBtn").disabled = true;
+      setEditBoxControlsEnabled(false);
 
       el("selectionHint").textContent = "This is a static imported SVG. It can be viewed and re-exported, but not edited unless it was exported from a version that includes editable chart data.";
       el("errorBox").textContent = "";
@@ -3668,6 +3855,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       customRows = [];
       managerOverrides = new Map();
       chartTitleOverrides = new Map();
+      boxDetailOverrides = new Map();
       lastLayoutSignature = "";
 
       try {
@@ -3782,6 +3970,22 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       el("addNewBoxBtn").disabled = !getActiveChart();
     });
 
+    [
+      "editBoxName",
+      "editBoxEmployeeId",
+      "editBoxManagerId",
+      "editBoxJobRole",
+      "editBoxTypeOfWork",
+      "editBoxArea",
+      "editBoxBuilding"
+    ].forEach(id => {
+      el(id).addEventListener("keydown", event => {
+        if (event.key === "Enter") {
+          applySelectedBoxDetails();
+        }
+      });
+    });
+
     el("boxPreset").addEventListener("change", () => {
       const preset = BOX_PRESETS[el("boxPreset").value];
 
@@ -3791,6 +3995,9 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       el("boxStroke").value = preset.stroke;
       el("boxText").value = preset.text;
     });
+
+    el("applyBoxDetailsBtn").addEventListener("click", applySelectedBoxDetails);
+    el("resetBoxDetailsBtn").addEventListener("click", resetSelectedBoxDetails);
 
     el("applyChartTitleBtn").addEventListener("click", applyChartTitle);
     el("resetChartTitleBtn").addEventListener("click", resetChartTitle);
