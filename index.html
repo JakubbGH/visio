@@ -478,6 +478,22 @@
         </label>
       </div>
 
+      <div class="grid" style="margin-top: 14px;">
+        <label>
+          Chart title / building name
+          <input id="chartTitleInput" placeholder="Uses selected Building name by default" disabled>
+          <span class="hint">Changes the displayed chart title only. It does not change the Building split value.</span>
+        </label>
+        <label>
+          Title action
+          <button id="applyChartTitleBtn" class="secondary full-width" type="button" disabled>Apply chart title</button>
+        </label>
+        <label>
+          Reset title
+          <button id="resetChartTitleBtn" class="secondary full-width" type="button" disabled>Use original Building name</button>
+        </label>
+      </div>
+
       <div style="margin-top: 18px;">
         <label>Show information on chart</label>
 
@@ -773,6 +789,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
     let removedNodeIds = new Set();
     let customRows = [];
     let managerOverrides = new Map();
+    let chartTitleOverrides = new Map();
 
     const BOX_PRESETS = {
       green: { fill: "#ffffff", stroke: "#00843D", text: "#172033" },
@@ -909,12 +926,41 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
         removedNodeIds: new Set(),
         customRows: [],
         managerOverrides: new Map(),
+        chartTitleOverrides: new Map(),
         lastLayoutSignature: ""
       };
     }
 
     function getActiveChart() {
       return chartDataSets.find(chart => chart.id === activeChartId) || chartDataSets[0] || null;
+    }
+
+    function getChartDisplayTitle(chart = getActiveChart()) {
+      if (!chart) {
+        return "";
+      }
+
+      return cleanText(chartTitleOverrides.get(chart.id)) || chart.building;
+    }
+
+    function syncChartTitleInput() {
+      const chart = getActiveChart();
+      const input = el("chartTitleInput");
+
+      if (!input) return;
+
+      if (!chart) {
+        input.value = "";
+        input.disabled = true;
+        el("applyChartTitleBtn").disabled = true;
+        el("resetChartTitleBtn").disabled = true;
+        return;
+      }
+
+      input.value = getChartDisplayTitle(chart);
+      input.disabled = false;
+      el("applyChartTitleBtn").disabled = false;
+      el("resetChartTitleBtn").disabled = !chartTitleOverrides.has(chart.id);
     }
 
     function setActiveChart(chartId) {
@@ -930,6 +976,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
         removedNodeIds = new Set();
         customRows = [];
         managerOverrides = new Map();
+        chartTitleOverrides = new Map();
         lastLayoutSignature = "";
         return;
       }
@@ -945,6 +992,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       removedNodeIds = chart.state.removedNodeIds || new Set();
       customRows = chart.state.customRows || [];
       managerOverrides = chart.state.managerOverrides || new Map();
+      chartTitleOverrides = chart.state.chartTitleOverrides || new Map();
       lastLayoutSignature = chart.state.lastLayoutSignature || "";
 
       selectedType = "";
@@ -952,6 +1000,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       selectedLineKey = "";
       selectedNodeIds.clear();
       selectedLineKeys.clear();
+      syncChartTitleInput();
     }
 
     function persistActiveChartState() {
@@ -968,6 +1017,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       chart.state.removedNodeIds = removedNodeIds;
       chart.state.customRows = customRows;
       chart.state.managerOverrides = managerOverrides;
+      chart.state.chartTitleOverrides = chartTitleOverrides;
       chart.state.lastLayoutSignature = lastLayoutSignature;
       chartStateStore.set(chart.id, chart.state);
     }
@@ -1003,11 +1053,11 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
         button.type = "button";
         button.className = chart.id === activeChartId ? "file-tab active" : "file-tab";
         button.innerHTML = `
-          <span>${chart.building}</span>
+          <span>${getChartDisplayTitle(chart)}</span>
           <span class="file-tab-count">${chart.fileStem}</span>
         `;
 
-        button.title = `${chart.fileName} — ${chart.building}`;
+        button.title = `${chart.fileName} — ${getChartDisplayTitle(chart)}`;
 
         button.addEventListener("click", () => {
           activeSourceId = chart.sourceId;
@@ -1817,6 +1867,35 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       return computeConnectorRoute(start, end, style).path;
     }
 
+    function applyChartTitle() {
+      const chart = getActiveChart();
+      if (!chart) return;
+
+      const nextTitle = cleanText(el("chartTitleInput").value);
+
+      if (!nextTitle || nextTitle === chart.building) {
+        chartTitleOverrides.delete(chart.id);
+      } else {
+        chartTitleOverrides.set(chart.id, nextTitle);
+      }
+
+      persistActiveChartState();
+      renderFileTabs();
+      syncChartTitleInput();
+      drawChart();
+    }
+
+    function resetChartTitle() {
+      const chart = getActiveChart();
+      if (!chart) return;
+
+      chartTitleOverrides.delete(chart.id);
+      persistActiveChartState();
+      renderFileTabs();
+      syncChartTitleInput();
+      drawChart();
+    }
+
     function clearSelection() {
       selectedType = "";
       selectedNodeId = "";
@@ -1825,6 +1904,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       selectedLineKeys.clear();
 
       updateSelectionPanel();
+    syncChartTitleInput();
       drawChart();
     }
 
@@ -3151,7 +3231,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       title.setAttribute("x", outputWidth / 2);
       title.setAttribute("y", page.margin + 30);
       title.setAttribute("text-anchor", "middle");
-      title.textContent = activeChart.building;
+      title.textContent = getChartDisplayTitle(activeChart);
       svg.appendChild(title);
 
       const subtitle = document.createElementNS("http://www.w3.org/2000/svg", "text");
@@ -3179,6 +3259,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       el("stats").innerHTML = `
         <span class="pill">${activeChart.fileStem}</span>
         <span class="pill">Building: ${activeChart.building}</span>
+        <span class="pill">Title: ${getChartDisplayTitle(activeChart)}</span>
         <span class="pill">${nodes.length} people</span>
         <span class="pill">${removedNodeIds.size} removed</span>
         <span class="pill">${customRows.length} added</span>
@@ -3205,6 +3286,9 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       el("useSelectedAsManagerBtn").disabled = !(selectedType === "node" && selectedNodeIds.size === 1);
       el("addNewBoxBtn").disabled = false;
       el("insertAboveSelectedBtn").disabled = !(selectedType === "node" && selectedNodeIds.size >= 1);
+      el("chartTitleInput").disabled = false;
+      el("applyChartTitleBtn").disabled = false;
+      el("resetChartTitleBtn").disabled = !chartTitleOverrides.has(activeChart.id);
 
       persistActiveChartState();
       updateSelectionPanel();
@@ -3217,7 +3301,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
         return "OrgChart";
       }
 
-      return `OrgChart_${safeName(chart.fileStem)}_${safeName(chart.building)}`;
+      return `OrgChart_${safeName(chart.fileStem)}_${safeName(getChartDisplayTitle(chart))}`;
     }
 
     function triggerBlobDownload(blob, filename) {
@@ -3259,6 +3343,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
             removedNodeIds: Array.from(state.removedNodeIds || []),
             customRows: state.customRows || [],
             managerOverrides: Array.from((state.managerOverrides || new Map()).entries()),
+            chartTitleOverrides: Array.from((state.chartTitleOverrides || new Map()).entries()),
             lastLayoutSignature: state.lastLayoutSignature || ""
           }
         ]),
@@ -3442,6 +3527,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
           removedNodeIds: new Set(state.removedNodeIds || []),
           customRows: state.customRows || [],
           managerOverrides: new Map(state.managerOverrides || []),
+          chartTitleOverrides: new Map(state.chartTitleOverrides || []),
           lastLayoutSignature: state.lastLayoutSignature || ""
         });
       });
@@ -3527,6 +3613,9 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       el("useSelectedAsManagerBtn").disabled = true;
       el("addNewBoxBtn").disabled = true;
       el("insertAboveSelectedBtn").disabled = true;
+      el("chartTitleInput").disabled = true;
+      el("applyChartTitleBtn").disabled = true;
+      el("resetChartTitleBtn").disabled = true;
 
       el("selectionHint").textContent = "This is a static imported SVG. It can be viewed and re-exported, but not edited unless it was exported from a version that includes editable chart data.";
       el("errorBox").textContent = "";
@@ -3578,6 +3667,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       removedNodeIds = new Set();
       customRows = [];
       managerOverrides = new Map();
+      chartTitleOverrides = new Map();
       lastLayoutSignature = "";
 
       try {
@@ -3700,6 +3790,15 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       el("boxFill").value = preset.fill;
       el("boxStroke").value = preset.stroke;
       el("boxText").value = preset.text;
+    });
+
+    el("applyChartTitleBtn").addEventListener("click", applyChartTitle);
+    el("resetChartTitleBtn").addEventListener("click", resetChartTitle);
+
+    el("chartTitleInput").addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        applyChartTitle();
+      }
     });
 
     el("addManualLineBtn").addEventListener("click", addManualLineBetweenSelectedBoxes);
