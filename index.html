@@ -574,7 +574,7 @@
       </div>
 
       <p class="hint">
-        Layout editing, layout style selection, and style customisation are in the left panel beside the preview. Hold Shift while clicking boxes or connectors to select multiple. Multiple uploaded CSV files are split into separate editable chart tabs by Building value. If a Building cell contains “/”, that person is duplicated into each listed Building chart. If a Name contains “/”, it is split into separate boxes that share links.
+        Layout editing, layout style selection, and style customisation are in the left panel beside the preview. Click boxes or connectors to toggle them in or out of the current selection. Multiple uploaded CSV files are split into separate editable chart tabs by Building value. If a Building cell contains “/”, that person is duplicated into each listed Building chart. If a Name contains “/”, it is split into separate boxes that share links.
       </p>
 
       <p id="errorBox" class="error"></p>
@@ -668,7 +668,7 @@
             </label>
 
             <p class="sidebar-hint">
-              Turn edit mode on, then select a box or connector. Hold Shift to select multiple. Drag selected boxes or line handles; final box positions snap to rows/columns when snap is on. To add a manual line, select exactly two boxes, then click Add manual line. Select boxes and click Remove selected box(es) to hide them from the current Building chart. Use Add new box to create chart-only boxes, or Insert above selected box(es) to place a new manager between an existing reporting chain.
+              Turn edit mode on, then click boxes or connectors to toggle them in or out of the selection. Drag selected boxes or line handles; final box positions snap to rows/columns when snap is on. To add a manual line, select exactly two boxes, then click Add manual line. Select boxes and click Remove selected box(es) to hide them from the current Building chart. Use Add new box to create chart-only boxes, or Insert above selected box(es) to place a new manager between an existing reporting chain.
             </p>
           </div>
 
@@ -2165,8 +2165,8 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
 
       if (!hasNode && !hasLine) {
         el("selectionHint").textContent = editMode
-          ? "Edit mode is on. Select a box or connector. Shift-click to select multiple."
-          : "Click a box or connector line to customise it. Shift-click to select multiple.";
+          ? "Edit mode is on. Select a box or connector. Click items to toggle them in or out of the selection."
+          : "Click a box or connector line to customise it. Click items to toggle them in or out of the selection.";
         return;
       }
 
@@ -2186,13 +2186,19 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       }
     }
 
-    function selectNode(node, additive = false) {
-      if (!additive) {
+    function selectNode(node) {
+      /*
+        Toggle selection with normal left-click:
+        - Click an unselected box to add it to the current box selection.
+        - Click a selected box again to remove it from the selection.
+        - Selecting boxes clears selected connector lines.
+      */
+      if (selectedType !== "node") {
         selectedNodeIds.clear();
         selectedLineKeys.clear();
       }
 
-      if (additive && selectedNodeIds.has(node.id)) {
+      if (selectedNodeIds.has(node.id)) {
         selectedNodeIds.delete(node.id);
       } else {
         selectedNodeIds.add(node.id);
@@ -2215,15 +2221,19 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       drawChart();
     }
 
-    function selectLine(parent, child, additive = false) {
+    function selectLine(parent, child) {
       const key = getConnectorKey(parent, child);
 
-      if (!additive) {
+      /*
+        Toggle connector selection with normal left-click.
+        Selecting connector lines clears selected boxes.
+      */
+      if (selectedType !== "line") {
         selectedLineKeys.clear();
         selectedNodeIds.clear();
       }
 
-      if (additive && selectedLineKeys.has(key)) {
+      if (selectedLineKeys.has(key)) {
         selectedLineKeys.delete(key);
       } else {
         selectedLineKeys.add(key);
@@ -2246,13 +2256,13 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       drawChart();
     }
 
-    function selectLineKey(key, additive = false) {
-      if (!additive) {
+    function selectLineKey(key) {
+      if (selectedType !== "line") {
         selectedLineKeys.clear();
         selectedNodeIds.clear();
       }
 
-      if (additive && selectedLineKeys.has(key)) {
+      if (selectedLineKeys.has(key)) {
         selectedLineKeys.delete(key);
       } else {
         selectedLineKeys.add(key);
@@ -2694,7 +2704,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
             stroke: style.stroke,
             style: style.style,
             connectorKey,
-            clickHandler: event => selectLineKey(connectorKey, event.shiftKey)
+            clickHandler: event => selectLineKey(connectorKey)
           });
 
           drawLineHandle(layer, start, end, style, connectorKey);
@@ -2722,7 +2732,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
           stroke: style.stroke,
           style: style.style,
           connectorKey: key,
-          clickHandler: event => selectLineKey(key, event.shiftKey)
+          clickHandler: event => selectLineKey(key)
         });
 
         drawLineHandle(layer, start, end, style, key);
@@ -2742,7 +2752,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
           stroke: style.stroke,
           style: style.style,
           connectorKey,
-          clickHandler: event => selectLine(node, child, event.shiftKey)
+          clickHandler: event => selectLine(node, child)
         });
 
         drawLineHandle(layer, start, end, style, connectorKey);
@@ -2763,7 +2773,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
             stroke: style.stroke,
             style: style.style,
             connectorKey,
-            clickHandler: event => selectLine(node, child, event.shiftKey)
+            clickHandler: event => selectLine(node, child)
           });
 
           drawLineHandle(layer, start, end, style, connectorKey);
@@ -2880,7 +2890,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
           return;
         }
 
-        selectNode(node, event.shiftKey);
+        selectNode(node);
       });
 
       if (editMode) {
