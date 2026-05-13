@@ -623,7 +623,34 @@
             </label>
 
             <p class="sidebar-hint">
-              Turn edit mode on, then select a box or connector. Hold Shift to select multiple. Drag selected boxes or line handles; final box positions snap to rows/columns when snap is on. To add a manual line, select exactly two boxes, then click Add manual line. Select boxes and click Remove selected box(es) to hide them from the current Building chart.
+              Turn edit mode on, then select a box or connector. Hold Shift to select multiple. Drag selected boxes or line handles; final box positions snap to rows/columns when snap is on. To add a manual line, select exactly two boxes, then click Add manual line. Select boxes and click Remove selected box(es) to hide them from the current Building chart. Use Add new box to create chart-only boxes, or Insert above selected box(es) to place a new manager between an existing reporting chain.
+            </p>
+          </div>
+
+          <div class="sidebar-section">
+            <h4>Add new box</h4>
+
+            <label>Name<input id="newBoxName" placeholder="New person name"></label>
+            <label>Employee ID<input id="newBoxEmployeeId" placeholder="Auto-generated if blank"></label>
+            <label>Manager ID<input id="newBoxManagerId" placeholder="Blank for top-level"></label>
+            <label>Job Role<input id="newBoxJobRole" placeholder="Job role"></label>
+            <label>Type of Work<input id="newBoxTypeOfWork" placeholder="Type of work"></label>
+            <label>Area<input id="newBoxArea" placeholder="Area"></label>
+
+            <div class="sidebar-actions">
+              <button id="useSelectedAsManagerBtn" class="secondary" type="button" disabled>
+                Use selected box as manager
+              </button>
+              <button id="addNewBoxBtn" type="button" disabled>
+                Add new box
+              </button>
+              <button id="insertAboveSelectedBtn" class="secondary" type="button" disabled>
+                Insert above selected box(es)
+              </button>
+            </div>
+
+            <p class="sidebar-hint">
+              New boxes are added only to the current Building chart. Use selected box as manager adds the new person below the selected box. Insert above selected box(es) places the new person between the selected box and its current manager.
             </p>
           </div>
 
@@ -744,6 +771,8 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
     let connectorStyles = new Map();
     let manualLinks = new Set();
     let removedNodeIds = new Set();
+    let customRows = [];
+    let managerOverrides = new Map();
 
     const BOX_PRESETS = {
       green: { fill: "#ffffff", stroke: "#00843D", text: "#172033" },
@@ -878,6 +907,8 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
         connectorStyles: new Map(),
         manualLinks: new Set(),
         removedNodeIds: new Set(),
+        customRows: [],
+        managerOverrides: new Map(),
         lastLayoutSignature: ""
       };
     }
@@ -897,6 +928,8 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
         connectorStyles = new Map();
         manualLinks = new Set();
         removedNodeIds = new Set();
+        customRows = [];
+        managerOverrides = new Map();
         lastLayoutSignature = "";
         return;
       }
@@ -910,6 +943,8 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       connectorStyles = chart.state.connectorStyles;
       manualLinks = chart.state.manualLinks || new Set();
       removedNodeIds = chart.state.removedNodeIds || new Set();
+      customRows = chart.state.customRows || [];
+      managerOverrides = chart.state.managerOverrides || new Map();
       lastLayoutSignature = chart.state.lastLayoutSignature || "";
 
       selectedType = "";
@@ -931,6 +966,8 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       chart.state.connectorStyles = connectorStyles;
       chart.state.manualLinks = manualLinks;
       chart.state.removedNodeIds = removedNodeIds;
+      chart.state.customRows = customRows;
+      chart.state.managerOverrides = managerOverrides;
       chart.state.lastLayoutSignature = lastLayoutSignature;
       chartStateStore.set(chart.id, chart.state);
     }
@@ -1161,13 +1198,18 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
             [nameCol]: namePart
           };
 
+          const effectiveManagerId = managerOverrides.has(originalId)
+            ? cleanText(managerOverrides.get(originalId))
+            : cleanText(row[managerCol]);
+
           nodes.set(nodeId, {
             id: nodeId,
             originalEmployeeId: originalId,
             splitIndex: index,
             splitCount: nameParts.length,
             name: namePart,
-            managerId: cleanText(row[managerCol]),
+            managerId: effectiveManagerId,
+            originalManagerId: cleanText(row[managerCol]),
             row: displayRow,
             children: [],
             managerRow: [],
@@ -1817,6 +1859,18 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
         el("snapSelectedBoxesBtn").disabled = !hasNode;
       }
 
+      if (el("useSelectedAsManagerBtn")) {
+        el("useSelectedAsManagerBtn").disabled = !(hasNode && nodeCount === 1);
+      }
+
+      if (el("addNewBoxBtn")) {
+        el("addNewBoxBtn").disabled = !getActiveChart();
+      }
+
+      if (el("insertAboveSelectedBtn")) {
+        el("insertAboveSelectedBtn").disabled = !(hasNode && nodeCount >= 1 && getActiveChart());
+      }
+
       if (!hasNode && !hasLine) {
         el("selectionHint").textContent = editMode
           ? "Edit mode is on. Select a box or connector. Shift-click to select multiple."
@@ -1929,6 +1983,170 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       drawChart();
     }
 
+    function getNodeEmployeeId(node) {
+      if (!node) return "";
+      return cleanText(node.originalEmployeeId || getBaseEmployeeIdFromNodeId(node.id) || node.id);
+    }
+
+    function generateCustomEmployeeId() {
+      const existing = new Set();
+
+      [...allRows, ...customRows].forEach(row => {
+        const id = cleanText(row[el("idCol").value]);
+        if (id) existing.add(id);
+      });
+
+      let index = customRows.length + 1;
+      let id = `NEW-${String(index).padStart(3, "0")}`;
+
+      while (existing.has(id)) {
+        index++;
+        id = `NEW-${String(index).padStart(3, "0")}`;
+      }
+
+      return id;
+    }
+
+    function useSelectedBoxAsManager() {
+      if (selectedType !== "node" || selectedNodeIds.size !== 1) {
+        return;
+      }
+
+      const selectedId = Array.from(selectedNodeIds)[0];
+      const node = lastDrawnNodesById.get(selectedId);
+      const managerId = getNodeEmployeeId(node);
+
+      if (managerId) {
+        el("newBoxManagerId").value = managerId;
+      }
+    }
+
+    function makeNewBoxRow(managerIdOverride = null) {
+      const activeChart = getActiveChart();
+      if (!activeChart) return null;
+
+      const idCol = el("idCol").value;
+      const nameCol = el("nameCol").value;
+      const managerCol = el("managerCol").value;
+      const buildingCol = el("buildingCol").value;
+      const titleCol = el("titleCol").value;
+      const typeCol = el("typeCol").value;
+      const areaCol = el("areaCol").value;
+
+      const name = cleanText(el("newBoxName").value);
+      if (!name) {
+        el("errorBox").textContent = "Enter a name before adding a new box.";
+        return null;
+      }
+
+      let employeeId = cleanText(el("newBoxEmployeeId").value) || generateCustomEmployeeId();
+
+      const existingIds = new Set([...allRows, ...customRows].map(row => cleanText(row[idCol])).filter(Boolean));
+      if (existingIds.has(employeeId)) {
+        let suffix = 2;
+        const base = employeeId;
+        while (existingIds.has(`${base}-${suffix}`)) {
+          suffix++;
+        }
+        employeeId = `${base}-${suffix}`;
+      }
+
+      const row = {};
+      row[idCol] = employeeId;
+      row[nameCol] = name;
+      row[managerCol] = managerIdOverride === null
+        ? cleanText(el("newBoxManagerId").value)
+        : cleanText(managerIdOverride);
+      row[titleCol] = cleanText(el("newBoxJobRole").value);
+      row[typeCol] = cleanText(el("newBoxTypeOfWork").value);
+      row[areaCol] = cleanText(el("newBoxArea").value);
+      row[buildingCol] = activeChart.building;
+
+      return { row, employeeId };
+    }
+
+    function clearNewBoxFields() {
+      el("newBoxName").value = "";
+      el("newBoxEmployeeId").value = "";
+      el("newBoxManagerId").value = "";
+      el("newBoxJobRole").value = "";
+      el("newBoxTypeOfWork").value = "";
+      el("newBoxArea").value = "";
+    }
+
+    function addNewBoxToChart() {
+      const result = makeNewBoxRow();
+      if (!result) return;
+
+      customRows.push(result.row);
+      clearNewBoxFields();
+
+      selectedType = "";
+      selectedNodeIds.clear();
+      selectedLineKeys.clear();
+
+      persistActiveChartState();
+      drawChart();
+    }
+
+    function insertNewBoxAboveSelected() {
+      if (selectedType !== "node" || selectedNodeIds.size < 1) {
+        el("errorBox").textContent = "Select one or more existing boxes first.";
+        return;
+      }
+
+      const selectedNodes = Array.from(selectedNodeIds)
+        .map(id => lastDrawnNodesById.get(id))
+        .filter(Boolean);
+
+      if (!selectedNodes.length) {
+        el("errorBox").textContent = "Could not find the selected boxes.";
+        return;
+      }
+
+      const selectedEmployeeIds = Array.from(new Set(
+        selectedNodes
+          .map(node => getNodeEmployeeId(node))
+          .filter(Boolean)
+      ));
+
+      if (!selectedEmployeeIds.length) {
+        el("errorBox").textContent = "Could not determine selected employee IDs.";
+        return;
+      }
+
+      const currentManagerIds = Array.from(new Set(
+        selectedNodes.map(node => cleanText(node.originalManagerId || node.managerId || ""))
+      ));
+
+      /*
+        Team manager rule:
+        - If selected boxes share the same current manager, the new manager inherits that manager.
+        - If selected boxes have different current managers, use the Manager ID field if provided.
+        - If Manager ID is blank and current managers differ, the new manager becomes top-level.
+      */
+      const typedManagerId = cleanText(el("newBoxManagerId").value);
+      const inheritedManagerId = currentManagerIds.length === 1 ? currentManagerIds[0] : typedManagerId;
+      const result = makeNewBoxRow(inheritedManagerId);
+
+      if (!result) return;
+
+      customRows.push(result.row);
+
+      selectedEmployeeIds.forEach(employeeId => {
+        managerOverrides.set(employeeId, result.employeeId);
+      });
+
+      clearNewBoxFields();
+
+      selectedType = "";
+      selectedNodeIds.clear();
+      selectedLineKeys.clear();
+
+      persistActiveChartState();
+      drawChart();
+    }
+
     function addManualLineBetweenSelectedBoxes() {
       if (selectedType !== "node" || selectedNodeIds.size !== 2) {
         return;
@@ -2021,6 +2239,13 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
         removedNodeIds.add(id);
         manualLayout.delete(id);
         nodeStyles.delete(id);
+        managerOverrides.delete(getBaseEmployeeIdFromNodeId(id));
+
+        Array.from(managerOverrides.entries()).forEach(([employeeId, managerId]) => {
+          if (managerId === getBaseEmployeeIdFromNodeId(id)) {
+            managerOverrides.delete(employeeId);
+          }
+        });
 
         Array.from(manualLinks).forEach(key => {
           const parsed = parseManualConnectorKey(key);
@@ -2743,7 +2968,8 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       }
 
       const page = getPageConfig();
-      const { nodes, roots } = buildHierarchy(allRows);
+      const rowsForChart = [...allRows, ...customRows];
+      const { nodes, roots } = buildHierarchy(rowsForChart);
 
       if (!nodes.length) {
         errorBox.textContent = "No valid rows found for this chart.";
@@ -2955,6 +3181,7 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
         <span class="pill">Building: ${activeChart.building}</span>
         <span class="pill">${nodes.length} people</span>
         <span class="pill">${removedNodeIds.size} removed</span>
+        <span class="pill">${customRows.length} added</span>
         <span class="pill">${roots.length} top-level node(s)</span>
         <span class="pill">Style: ${options.layoutStyle}</span>
         <span class="pill">${page.label}</span>
@@ -2975,6 +3202,9 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       el("removeSelectedBoxesBtn").disabled = !(selectedType === "node" && selectedNodeIds.size > 0);
       el("restoreRemovedBoxesBtn").disabled = removedNodeIds.size === 0;
       el("snapSelectedBoxesBtn").disabled = !(selectedType === "node" && selectedNodeIds.size > 0);
+      el("useSelectedAsManagerBtn").disabled = !(selectedType === "node" && selectedNodeIds.size === 1);
+      el("addNewBoxBtn").disabled = false;
+      el("insertAboveSelectedBtn").disabled = !(selectedType === "node" && selectedNodeIds.size >= 1);
 
       persistActiveChartState();
       updateSelectionPanel();
@@ -3027,6 +3257,8 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
             connectorStyles: Array.from((state.connectorStyles || new Map()).entries()),
             manualLinks: Array.from(state.manualLinks || []),
             removedNodeIds: Array.from(state.removedNodeIds || []),
+            customRows: state.customRows || [],
+            managerOverrides: Array.from((state.managerOverrides || new Map()).entries()),
             lastLayoutSignature: state.lastLayoutSignature || ""
           }
         ]),
@@ -3208,6 +3440,8 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
           connectorStyles: new Map(state.connectorStyles || []),
           manualLinks: new Set(state.manualLinks || []),
           removedNodeIds: new Set(state.removedNodeIds || []),
+          customRows: state.customRows || [],
+          managerOverrides: new Map(state.managerOverrides || []),
           lastLayoutSignature: state.lastLayoutSignature || ""
         });
       });
@@ -3290,6 +3524,9 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       el("removeSelectedBoxesBtn").disabled = true;
       el("restoreRemovedBoxesBtn").disabled = true;
       el("snapSelectedBoxesBtn").disabled = true;
+      el("useSelectedAsManagerBtn").disabled = true;
+      el("addNewBoxBtn").disabled = true;
+      el("insertAboveSelectedBtn").disabled = true;
 
       el("selectionHint").textContent = "This is a static imported SVG. It can be viewed and re-exported, but not edited unless it was exported from a version that includes editable chart data.";
       el("errorBox").textContent = "";
@@ -3339,6 +3576,8 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       connectorStyles = new Map();
       manualLinks = new Set();
       removedNodeIds = new Set();
+      customRows = [];
+      managerOverrides = new Map();
       lastLayoutSignature = "";
 
       try {
@@ -3449,6 +3688,10 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
       }
     });
 
+    el("newBoxName").addEventListener("input", () => {
+      el("addNewBoxBtn").disabled = !getActiveChart();
+    });
+
     el("boxPreset").addEventListener("change", () => {
       const preset = BOX_PRESETS[el("boxPreset").value];
 
@@ -3464,6 +3707,9 @@ E00143,Alex / Taylor,E00120,Worker,Electrical,,Area1,Building1</pre>
     el("removeSelectedBoxesBtn").addEventListener("click", removeSelectedBoxes);
     el("restoreRemovedBoxesBtn").addEventListener("click", restoreRemovedBoxes);
     el("snapSelectedBoxesBtn").addEventListener("click", snapSelectedBoxesToGrid);
+    el("useSelectedAsManagerBtn").addEventListener("click", useSelectedBoxAsManager);
+    el("addNewBoxBtn").addEventListener("click", addNewBoxToChart);
+    el("insertAboveSelectedBtn").addEventListener("click", insertNewBoxAboveSelected);
 
     el("applyStyleBtn").addEventListener("click", applyCurrentStyle);
     el("clearSelectionBtn").addEventListener("click", clearSelection);
